@@ -6,3 +6,4 @@ backend/mongodb-data/
 backend/*.log
 tickets/
 frontend/dist/
+api_info.txt
