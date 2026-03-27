@@ -5,6 +5,7 @@ import MovieDetailPage from "../pages/MovieDetailPage";
 import SearchPage from "../pages/SearchPage";
 import BookingPage from "../pages/BookingPage";
 import PaymentPage from "../pages/PaymentPage";
+import PaymentSuccessPage from "../pages/PaymentSuccessPage";
 import BookingConfirmPage from "../pages/BookingConfirmPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
@@ -29,6 +30,14 @@ const AppRoutes = () => (
       element={
         <ProtectedRoute>
           <PaymentPage />
+        </ProtectedRoute>
+      }
+    />
+    <Route
+      path="/payment/success"
+      element={
+        <ProtectedRoute>
+          <PaymentSuccessPage />
         </ProtectedRoute>
       }
     />
