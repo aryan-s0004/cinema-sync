@@ -64,6 +64,15 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (payload) => {
     const data = await authApi.login(payload);
+    if (data?.otpRequired) {
+      return data;
+    }
+    persistSession(data);
+    return data.user || null;
+  };
+
+  const verifyLoginOtp = async (payload) => {
+    const data = await authApi.verifyLoginOtp(payload);
     persistSession(data);
     return data.user;
   };
@@ -71,7 +80,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (payload) => {
     const data = await authApi.register(payload);
     persistSession(data);
-    return data.user;
+    return data;
   };
 
   const logout = async () => {
@@ -89,7 +98,10 @@ export const AuthProvider = ({ children }) => {
       loading,
       isAuthenticated: Boolean(user),
       login,
+      verifyLoginOtp,
       register,
+      resendOtp: authApi.resendOtp,
+      verifyAccountOtp: authApi.verifyAccountOtp,
       logout
     }),
     [user, loading]
