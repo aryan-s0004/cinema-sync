@@ -22,4 +22,8 @@ const bookingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+bookingSchema.index({ user: 1, createdAt: -1 });
+bookingSchema.index({ show: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ "payment.orderId": 1 }, { sparse: true });
+
 module.exports = mongoose.model("Booking", bookingSchema);

@@ -14,5 +14,7 @@ const seatSchema = new mongoose.Schema(
 );
 
 seatSchema.index({ show: 1, row: 1, number: 1 }, { unique: true });
+seatSchema.index({ show: 1, status: 1 });
+seatSchema.index({ status: 1, lockedUntil: 1 });
 
 module.exports = mongoose.model("Seat", seatSchema);

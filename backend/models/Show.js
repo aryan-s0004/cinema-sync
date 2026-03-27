@@ -14,5 +14,7 @@ const showSchema = new mongoose.Schema(
 );
 
 showSchema.index({ movie: 1, showTime: 1, theatreName: 1, screenName: 1 }, { unique: true });
+showSchema.index({ status: 1, showTime: 1 });
+showSchema.index({ movie: 1, status: 1, showTime: 1 });
 
 module.exports = mongoose.model("Show", showSchema);

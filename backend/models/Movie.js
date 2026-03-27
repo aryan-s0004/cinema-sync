@@ -18,4 +18,7 @@ const movieSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+movieSchema.index({ isActive: 1, popularity: -1, createdAt: -1 });
+movieSchema.index({ title: "text" });
+
 module.exports = mongoose.model("Movie", movieSchema);
