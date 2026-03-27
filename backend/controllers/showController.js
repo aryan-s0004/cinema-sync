@@ -3,6 +3,7 @@ const Show = require("../models/Show");
 const Seat = require("../models/Seat");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { parsePositiveInt } = require("../validators/common");
 
 const generateSeatsForShow = async (showId, totalSeats) => {
   const seats = [];
@@ -26,6 +27,7 @@ const generateSeatsForShow = async (showId, totalSeats) => {
 
 const createDefaultShowsForMovie = async (movieId) => {
   const base = new Date();
+  base.setMinutes(0, 0, 0);
   const slots = [2, 5, 8];
 
   for (let i = 0; i < slots.length; i += 1) {
@@ -48,7 +50,7 @@ const createDefaultShowsForMovie = async (movieId) => {
           status: "active",
         },
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: "after" }
     );
 
     const seatCount = await Seat.countDocuments({ show: doc._id });
@@ -61,6 +63,9 @@ const createDefaultShowsForMovie = async (movieId) => {
 const getAllShows = async (req, res, next) => {
   try {
     const { movieId, date } = req.query;
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = Math.min(parsePositiveInt(req.query.limit, 20), 100);
+    const skip = (page - 1) * limit;
     const filter = { status: "active" };
 
     if (movieId) filter.movie = movieId;
@@ -71,17 +76,40 @@ const getAllShows = async (req, res, next) => {
       filter.showTime = { $gte: start, $lt: end };
     }
 
-    let shows = await Show.find(filter).populate("movie").sort({ showTime: 1 });
+    let [shows, total] = await Promise.all([
+      Show.find(filter)
+        .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+        .sort({ showTime: 1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Show.countDocuments(filter),
+    ]);
 
     if (movieId && shows.length === 0) {
       const movie = await Movie.findById(movieId);
       if (movie) {
         await createDefaultShowsForMovie(movieId);
-        shows = await Show.find(filter).populate("movie").sort({ showTime: 1 });
+        [shows, total] = await Promise.all([
+          Show.find(filter)
+            .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+            .sort({ showTime: 1 })
+            .skip(skip)
+            .limit(limit)
+            .lean(),
+          Show.countDocuments(filter),
+        ]);
       }
     }
 
-    res.json(new ApiResponse(200, shows, "Shows fetched"));
+    res.json(
+      new ApiResponse(200, shows, "Shows fetched", {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      })
+    );
   } catch (error) {
     next(error);
   }
@@ -89,7 +117,9 @@ const getAllShows = async (req, res, next) => {
 
 const getShowById = async (req, res, next) => {
   try {
-    const show = await Show.findById(req.params.id).populate("movie");
+    const show = await Show.findById(req.params.id)
+      .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+      .lean();
     if (!show) throw new ApiError(404, "Show not found");
     res.json(new ApiResponse(200, show, "Show fetched"));
   } catch (error) {

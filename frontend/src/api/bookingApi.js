@@ -29,3 +29,8 @@ export const verifyPayment = async (payload) => {
   const { data } = await api.post("/payments/verify", payload);
   return data.data;
 };
+
+export const getTicketByBooking = async (bookingId) => {
+  const { data } = await api.get(`/tickets/booking/${bookingId}`);
+  return data.data;
+};

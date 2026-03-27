@@ -23,11 +23,11 @@ const releaseExpiredLocks = async (showId = null) => {
 const getSeatsByShow = async (req, res, next) => {
   try {
     const { showId } = req.params;
-    const show = await Show.findById(showId);
-    if (!show) throw new ApiError(404, "Show not found");
+    const show = await Show.findById(showId).select("_id status").lean();
+    if (!show || show.status !== "active") throw new ApiError(404, "Active show not found");
 
     await releaseExpiredLocks(showId);
-    const seats = await Seat.find({ show: showId }).sort({ row: 1, number: 1 });
+    const seats = await Seat.find({ show: showId }).sort({ row: 1, number: 1 }).lean();
     res.json(new ApiResponse(200, seats, "Seats fetched"));
   } catch (error) {
     next(error);
@@ -44,10 +44,31 @@ const lockSeats = async (req, res, next) => {
     }
 
     const uniqueSeatIds = [...new Set(seatIds.map((id) => String(id)))];
+    const show = await Show.findById(showId).select("_id status").lean();
+    if (!show || show.status !== "active") {
+      throw new ApiError(404, "Active show not found");
+    }
+
     const now = new Date();
     const lockUntil = new Date(now.getTime() + LOCK_DURATION_MINUTES * 60 * 1000);
 
     await releaseExpiredLocks(showId);
+
+    const availableSeats = await Seat.find({
+      _id: { $in: uniqueSeatIds },
+      show: showId,
+      $or: [
+        { status: "available" },
+        { status: "locked", lockedUntil: { $lte: now } },
+        { status: "locked", lockedBy: userId, lockedUntil: { $gt: now } },
+      ],
+    })
+      .select("_id")
+      .lean();
+
+    if (availableSeats.length !== uniqueSeatIds.length) {
+      throw new ApiError(409, "Some seats are already booked/locked by another user");
+    }
 
     const result = await Seat.updateMany(
       {
@@ -56,7 +77,7 @@ const lockSeats = async (req, res, next) => {
         $or: [
           { status: "available" },
           { status: "locked", lockedUntil: { $lte: now } },
-          { status: "locked", lockedBy: userId },
+          { status: "locked", lockedBy: userId, lockedUntil: { $gt: now } },
         ],
       },
       {
@@ -69,10 +90,22 @@ const lockSeats = async (req, res, next) => {
     );
 
     if (result.modifiedCount !== uniqueSeatIds.length) {
+      await Seat.updateMany(
+        {
+          _id: { $in: uniqueSeatIds },
+          show: showId,
+          status: "locked",
+          lockedBy: userId,
+          lockedUntil: lockUntil,
+        },
+        {
+          $set: { status: "available", lockedBy: null, lockedUntil: null },
+        }
+      );
       throw new ApiError(409, "Some seats are already booked/locked by another user");
     }
 
-    const seats = await Seat.find({ _id: { $in: uniqueSeatIds } }).sort({ row: 1, number: 1 });
+    const seats = await Seat.find({ _id: { $in: uniqueSeatIds } }).sort({ row: 1, number: 1 }).lean();
     res.json(new ApiResponse(200, { lockUntil, seats }, `Seats locked for ${LOCK_DURATION_MINUTES} minutes`));
   } catch (error) {
     next(error);

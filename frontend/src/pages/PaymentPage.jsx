@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { createOrder, getBookingById, verifyPayment } from "../api/bookingApi";
+import { bookingApi } from "../api/bookings";
+import Button from "../components/ui/Button";
+import formatPrice from "../utils/formatPrice";
 
 const PaymentPage = () => {
   const { bookingId } = useParams();
   const navigate = useNavigate();
+
   const [booking, setBooking] = useState(null);
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -14,9 +17,13 @@ const PaymentPage = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const bookingData = await getBookingById(bookingId);
+        setLoading(true);
+        setError("");
+
+        const bookingData = await bookingApi.bookingById(bookingId);
+        const orderData = await bookingApi.createOrder(bookingId);
+
         setBooking(bookingData);
-        const orderData = await createOrder(bookingId);
         setOrder(orderData);
       } catch (err) {
         setError(err.response?.data?.message || "Unable to initialize payment");
@@ -24,19 +31,22 @@ const PaymentPage = () => {
         setLoading(false);
       }
     };
+
     load();
   }, [bookingId]);
 
   const completePayment = async () => {
-    setPaying(true);
-    setError("");
     try {
-      await verifyPayment({
+      setPaying(true);
+      setError("");
+
+      await bookingApi.verifyPayment({
         bookingId,
         orderId: order?.orderId,
         paymentId: `demo_pay_${Date.now()}`,
-        signature: "demo_signature",
+        signature: "demo_signature"
       });
+
       navigate(`/confirmation/${bookingId}`);
     } catch (err) {
       setError(err.response?.data?.message || "Payment verification failed");
@@ -45,20 +55,26 @@ const PaymentPage = () => {
     }
   };
 
-  if (loading) return <p>Preparing payment...</p>;
-  if (error) return <p className="error">{error}</p>;
+  if (loading) {
+    return <p className="text-slate-300">Preparing payment...</p>;
+  }
 
   return (
-    <section>
-      <h1>Payment</h1>
-      <div className="card narrow">
+    <section className="mx-auto max-w-lg space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+      <h1 className="text-2xl font-semibold text-white">Payment</h1>
+
+      <div className="space-y-1 text-sm text-slate-300">
         <p>Booking ID: {booking?._id}</p>
-        <p>Amount: Rs. {booking?.totalAmount}</p>
-        <p>Order: {order?.orderId}</p>
-        <button className="button" disabled={paying} onClick={completePayment}>
-          {paying ? "Verifying..." : "Pay Now (Mock)"}
-        </button>
+        <p>Movie: {booking?.show?.movie?.title}</p>
+        <p>Amount: {formatPrice(booking?.totalAmount)}</p>
+        <p>Order ID: {order?.orderId}</p>
       </div>
+
+      {error ? <p className="text-sm text-rose-400">{error}</p> : null}
+
+      <Button loading={paying} className="w-full" onClick={completePayment}>
+        Pay Now (Mock)
+      </Button>
     </section>
   );
 };

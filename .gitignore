@@ -1,2 +1,8 @@
 node_modules
 .env
+backend/.env
+frontend/.env
+backend/mongodb-data/
+backend/*.log
+tickets/
+frontend/dist/

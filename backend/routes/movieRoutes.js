@@ -8,14 +8,27 @@ const {
   deleteMovie,
 } = require("../controllers/movieController");
 const { protect, adminOnly } = require("../middleware/authMiddleware");
+const validateRequest = require("../middleware/validateRequest");
+const {
+  movieQueryValidator,
+  movieIdParamValidator,
+  movieCreateValidator,
+  movieUpdateValidator,
+} = require("../validators/movieValidators");
 
 const router = express.Router();
 
-router.get("/", getAllMovies);
-router.get("/trending", getTrendingMovies);
-router.get("/:id", getMovieById);
-router.post("/", protect, adminOnly, createMovie);
-router.put("/:id", protect, adminOnly, updateMovie);
-router.delete("/:id", protect, adminOnly, deleteMovie);
+router.get("/", validateRequest({ query: movieQueryValidator }), getAllMovies);
+router.get("/trending", validateRequest({ query: movieQueryValidator }), getTrendingMovies);
+router.get("/:id", validateRequest({ params: movieIdParamValidator }), getMovieById);
+router.post("/", protect, adminOnly, validateRequest({ body: movieCreateValidator }), createMovie);
+router.put(
+  "/:id",
+  protect,
+  adminOnly,
+  validateRequest({ params: movieIdParamValidator, body: movieUpdateValidator }),
+  updateMovie
+);
+router.delete("/:id", protect, adminOnly, validateRequest({ params: movieIdParamValidator }), deleteMovie);
 
 module.exports = router;

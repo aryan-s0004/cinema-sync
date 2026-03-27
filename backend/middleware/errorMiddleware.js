@@ -11,6 +11,7 @@ const errorHandler = (err, _req, res, _next) => {
   res.status(statusCode).json({
     success: false,
     message,
+    data: null,
     errors: err.errors || null,
     stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });

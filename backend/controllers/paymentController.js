@@ -1,6 +1,7 @@
 const Booking = require("../models/Booking");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
+const { createOrUpdateTicketForBooking } = require("../services/ticketService");
 
 const createPaymentOrder = async (req, res, next) => {
   try {
@@ -58,6 +59,12 @@ const verifyPayment = async (req, res, next) => {
       throw new ApiError(400, "Order mismatch for booking");
     }
 
+    if (booking.status === "confirmed" && booking.payment?.status === "captured") {
+      await booking.populate([{ path: "show", populate: [{ path: "movie" }] }, { path: "seats" }]);
+      const ticket = await createOrUpdateTicketForBooking(booking, req.user);
+      return res.json(new ApiResponse(200, { booking, ticket }, "Payment already verified"));
+    }
+
     booking.payment = {
       ...(booking.payment || {}),
       paymentId: paymentId || `pay_${Date.now()}`,
@@ -67,8 +74,19 @@ const verifyPayment = async (req, res, next) => {
     booking.status = "confirmed";
 
     await booking.save();
+    await booking.populate([{ path: "show", populate: [{ path: "movie" }] }, { path: "seats" }]);
+    const ticket = await createOrUpdateTicketForBooking(booking, req.user);
 
-    res.json(new ApiResponse(200, booking, "Payment verified and booking confirmed"));
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          booking,
+          ticket,
+        },
+        "Payment verified, booking confirmed, ticket generated"
+      )
+    );
   } catch (error) {
     next(error);
   }

@@ -4,6 +4,10 @@ const ApiError = require("../utils/ApiError");
 
 const protect = async (req, _res, next) => {
   try {
+    if (!process.env.JWT_ACCESS_SECRET) {
+      throw new ApiError(500, "JWT_ACCESS_SECRET is not configured");
+    }
+
     const authHeader = req.headers.authorization || "";
     if (!authHeader.startsWith("Bearer ")) {
       throw new ApiError(401, "Authorization token missing");

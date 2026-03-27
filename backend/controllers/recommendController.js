@@ -1,6 +1,7 @@
 const Movie = require("../models/Movie");
 const ApiResponse = require("../utils/ApiResponse");
 const { discoverMoviesByGenreName } = require("../services/tmdbService");
+const { getCache, setCache } = require("../services/cacheService");
 
 const moodToGenre = {
   happy: "Comedy",
@@ -40,23 +41,30 @@ const callOpenAIForGenre = async ({ mood, genre }) => {
 const recommendMovies = async (req, res, next) => {
   try {
     const { mood, genre } = req.body || {};
+    const cacheKey = `recommend:${String(mood || "").toLowerCase()}:${String(genre || "").toLowerCase()}`;
+    const cached = getCache(cacheKey);
+    if (cached) {
+      return res.json(new ApiResponse(200, cached, "Recommendations fetched (cached)"));
+    }
+
     const aiGenre = await callOpenAIForGenre({ mood, genre });
-    const selectedGenre = aiGenre || genre || moodToGenre[(mood || "").toLowerCase()] || "Action";
+    const selectedGenre = String(aiGenre || genre || moodToGenre[(mood || "").toLowerCase()] || "Action").trim();
 
     let recommendations = [];
     if (process.env.TMDB_API_KEY) {
       recommendations = await discoverMoviesByGenreName(selectedGenre);
     } else {
-      recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10);
+      recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10).lean();
     }
 
-    res.json(
-      new ApiResponse(200, {
-        input: { mood, genre },
-        selectedGenre,
-        recommendations,
-      }, "Recommendations fetched")
-    );
+    const payload = {
+      input: { mood, genre },
+      selectedGenre,
+      recommendations,
+    };
+
+    setCache(cacheKey, payload, 60_000);
+    res.json(new ApiResponse(200, payload, "Recommendations fetched"));
   } catch (error) {
     next(error);
   }

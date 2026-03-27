@@ -1,9 +1,11 @@
 const Booking = require("../models/Booking");
 const Seat = require("../models/Seat");
 const Show = require("../models/Show");
+const Ticket = require("../models/Ticket");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { releaseExpiredLocks } = require("./seatController");
+const { parsePositiveInt } = require("../validators/common");
 
 const createBooking = async (req, res, next) => {
   try {
@@ -15,7 +17,7 @@ const createBooking = async (req, res, next) => {
     }
 
     const uniqueSeatIds = [...new Set(seatIds.map((id) => String(id)))];
-    const show = await Show.findById(showId);
+    const show = await Show.findById(showId).select("_id price status").lean();
     if (!show || show.status !== "active") {
       throw new ApiError(404, "Active show not found");
     }
@@ -29,7 +31,9 @@ const createBooking = async (req, res, next) => {
       status: "locked",
       lockedBy: userId,
       lockedUntil: { $gt: now },
-    });
+    })
+      .select("_id")
+      .lean();
 
     if (lockedSeats.length !== uniqueSeatIds.length) {
       throw new ApiError(409, "Booking allowed only for your valid locked seats");
@@ -53,6 +57,10 @@ const createBooking = async (req, res, next) => {
     );
 
     if (reserveResult.modifiedCount !== uniqueSeatIds.length) {
+      await Seat.updateMany(
+        { _id: { $in: uniqueSeatIds }, show: showId, status: "booked" },
+        { $set: { status: "available", lockedBy: null, lockedUntil: null } }
+      );
       throw new ApiError(409, "Some seats were taken. Please reselect seats.");
     }
 
@@ -83,12 +91,29 @@ const createBooking = async (req, res, next) => {
 
 const getMyBookings = async (req, res, next) => {
   try {
-    const bookings = await Booking.find({ user: req.user._id })
-      .populate({ path: "show", populate: [{ path: "movie" }] })
-      .populate("seats")
-      .sort({ createdAt: -1 });
+    const page = parsePositiveInt(req.query.page, 1);
+    const limit = Math.min(parsePositiveInt(req.query.limit, 20), 100);
+    const skip = (page - 1) * limit;
 
-    res.json(new ApiResponse(200, bookings, "Bookings fetched"));
+    const [bookings, total] = await Promise.all([
+      Booking.find({ user: req.user._id })
+        .populate({ path: "show", populate: [{ path: "movie" }] })
+        .populate("seats")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Booking.countDocuments({ user: req.user._id }),
+    ]);
+
+    res.json(
+      new ApiResponse(200, bookings, "Bookings fetched", {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      })
+    );
   } catch (error) {
     next(error);
   }
@@ -98,7 +123,8 @@ const getBookingById = async (req, res, next) => {
   try {
     const booking = await Booking.findOne({ _id: req.params.id, user: req.user._id })
       .populate({ path: "show", populate: [{ path: "movie" }] })
-      .populate("seats");
+      .populate("seats")
+      .lean();
 
     if (!booking) {
       throw new ApiError(404, "Booking not found");
@@ -125,6 +151,8 @@ const cancelBooking = async (req, res, next) => {
       { _id: { $in: booking.seats }, show: booking.show, status: "booked" },
       { $set: { status: "available", lockedBy: null, lockedUntil: null } }
     );
+
+    await Ticket.updateMany({ booking: booking._id, user: req.user._id }, { $set: { status: "cancelled" } });
 
     res.json(new ApiResponse(200, booking, "Booking cancelled"));
   } catch (error) {
