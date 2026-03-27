@@ -1,0 +1,188 @@
+.app {
+  min-height: 100vh;
+}
+
+.app-header {
+  background: #0f172a;
+  color: #f8fafc;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 14px;
+}
+
+.brand {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 50px;
+}
+
+h1 {
+  margin: 0 0 14px;
+}
+
+.grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card h3 {
+  margin: 0;
+}
+
+.narrow {
+  max-width: 460px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.list-item {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.button {
+  background: #0ea5e9;
+  border: none;
+  color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #dc2626;
+}
+
+.muted {
+  color: #475569;
+}
+
+.seat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.row-label {
+  width: 22px;
+  font-weight: 700;
+}
+
+.seat {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #94a3b8;
+  border-radius: 6px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.seat.available {
+  background: #ecfeff;
+}
+
+.seat.locked,
+.seat.booked {
+  background: #cbd5e1;
+  cursor: not-allowed;
+}
+
+.seat.selected {
+  background: #22c55e;
+  color: #ffffff;
+  border-color: #16a34a;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+}
+
+.dot.available {
+  background: #0891b2;
+}
+
+.dot.selected {
+  background: #22c55e;
+}
+
+.dot.locked,
+.dot.booked {
+  background: #64748b;
+}
+
+label {
+  font-weight: 600;
+}
+
+input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  width: 100%;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 700px) {
+  .list-item {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

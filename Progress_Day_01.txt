@@ -1,0 +1,50 @@
+As of **March 27, 2026**, here’s the real progress snapshot.
+
+**Overall progress**
+- Project setup: **done**
+- Backend feature drafting: **partly done (~60%)**
+- Frontend feature implementation: **early stage (~20%)**
+- End-to-end working app: **not done yet**
+- Total overall: **~40% complete**
+
+**Features added so far**
+1. Auth backend logic added:
+- Register/login
+- Token refresh/logout/me logic (written in controller)
+
+2. Movie features drafted:
+- Get movies, get by id, create, update, delete (admin-protected design present)
+
+3. Show features drafted:
+- List/filter shows, get by id, create show, cancel show
+- Auto seat generation on show creation
+
+4. Seat features drafted:
+- Fetch seats by show
+- Lock seats for booking window
+
+5. Booking features drafted:
+- Create booking from locked seats
+- My bookings list
+- Booking details
+- Cancel booking + release seats
+
+6. Payment draft added:
+- Create payment order + verify payment files exist
+
+7. Frontend pieces added:
+- React app scaffold
+- Axios instance with auth token + refresh interceptor
+- Multiple page/component/service files created (many are placeholders right now)
+
+8. Frontend build status:
+- `npm run build` succeeds
+
+**What is still left / blocking**
+1. Backend has critical wiring issues, so server is not fully runnable.
+2. Some backend models/controllers have wrong imports/schema definitions.
+3. Payment route files are in the wrong location (not wired correctly).
+4. Most frontend feature pages are empty and routing is not set up for full flow.
+5. No full booking-payment-confirmation end-to-end flow yet.
+
+If you want, next I can give you a **strict phase-wise “Done / In Progress / Pending” checklist** that you can use directly in your project report.
