@@ -3,6 +3,7 @@ const cors = require("cors");
 const helmet = require("helmet");
 const requestLogger = require("./middleware/requestLogger");
 const rateLimiter = require("./middleware/rateLimiter");
+const requestId = require("./middleware/requestId");
 const { sanitizeRequest } = require("./utils/sanitizer");
 
 const authRoutes = require("./routes/authRoutes");
@@ -28,6 +29,7 @@ app.use(
 );
 app.use(helmet());
 app.use(express.json({ limit: "100kb" }));
+app.use(requestId);
 app.use(sanitizeRequest);
 app.use(rateLimiter);
 

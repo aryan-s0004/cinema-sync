@@ -8,7 +8,7 @@ const requestLogger = (req, res, next) => {
     if (process.env.NODE_ENV === "test") return;
 
     console.log(
-      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs.toFixed(1)}ms`
+      `[${new Date().toISOString()}] [${req.requestId || "-"}] ${req.method} ${req.originalUrl} ${res.statusCode} ${durationMs.toFixed(1)}ms`
     );
   });
 
