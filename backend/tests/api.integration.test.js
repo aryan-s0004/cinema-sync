@@ -1,5 +1,6 @@
 const { before, after, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const request = require("supertest");
 const mongoose = require("mongoose");
 
@@ -14,6 +15,7 @@ process.env.SEAT_LOCK_MINUTES = process.env.SEAT_LOCK_MINUTES || "10";
 const TEST_MONGO_URI = process.env.MONGO_URI_TEST || "mongodb://127.0.0.1:27017/cinemasync_test";
 
 const app = require("../app");
+const User = require("../models/User");
 const Movie = require("../models/Movie");
 const Show = require("../models/Show");
 const Seat = require("../models/Seat");
@@ -81,6 +83,40 @@ test("POST /api/auth/register returns 400 for invalid payload", async () => {
   assert.equal(response.body.message, "Validation failed");
 });
 
+test("POST /api/auth/login requires OTP and verifies successfully", async () => {
+  await request(app).post("/api/auth/register").send({
+    name: "Otp User",
+    email: "otp_user@example.com",
+    password: "password123",
+  });
+
+  const loginRes = await request(app).post("/api/auth/login").send({
+    email: "otp_user@example.com",
+    password: "password123",
+  });
+
+  assert.equal(loginRes.status, 200);
+  assert.equal(loginRes.body.success, true);
+  assert.equal(loginRes.body.data.otpRequired, true);
+
+  const user = await User.findOne({ email: "otp_user@example.com" });
+  user.otp.hash = crypto.createHash("sha256").update("000000").digest("hex");
+  user.otp.purpose = "login";
+  user.otp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  user.otp.attempts = 0;
+  await user.save();
+
+  const verifyRes = await request(app).post("/api/auth/login/verify-otp").send({
+    email: "otp_user@example.com",
+    otp: "000000",
+  });
+
+  assert.equal(verifyRes.status, 200);
+  assert.equal(verifyRes.body.success, true);
+  assert.ok(verifyRes.body.data.accessToken);
+  assert.ok(verifyRes.body.data.refreshToken);
+});
+
 test("GET /api/bookings/my returns 401 without token", async () => {
   const response = await request(app).get("/api/bookings/my");
 
@@ -103,14 +139,57 @@ test("GET /api/test/error returns 500 (server error handling)", async () => {
   assert.equal(response.body.message, "Intentional test error");
 });
 
-test("POST /api/recommend returns 400 when both mood and genre missing", async () => {
+test("POST /api/recommend returns recommendations even when mood and genre missing", async () => {
   const response = await request(app).post("/api/recommend").send({});
 
-  assert.equal(response.status, 400);
-  assert.equal(response.body.success, false);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.ok(Array.isArray(response.body.data.recommendations));
 });
 
-test("booking flow: lock seats -> booking -> payment -> ticket", async () => {
+test("POST /api/seats/suggest returns contiguous seat suggestion", async () => {
+  const token = await registerUserAndGetToken();
+  const authHeader = { Authorization: `Bearer ${token}` };
+
+  const movie = await Movie.create({
+    title: "Suggestion Movie",
+    overview: "Suggestion movie",
+    language: "en",
+    duration: 120,
+    rating: 8.2,
+    popularity: 10,
+    isActive: true,
+  });
+
+  const show = await Show.create({
+    movie: movie._id,
+    theatreName: "CinemaSync Multiplex",
+    screenName: "Screen 1",
+    showTime: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    totalSeats: 10,
+    status: "active",
+  });
+
+  await Seat.insertMany([
+    { show: show._id, row: "A", number: 1, type: "standard", status: "available" },
+    { show: show._id, row: "A", number: 2, type: "standard", status: "available" },
+    { show: show._id, row: "A", number: 3, type: "premium", status: "available" },
+    { show: show._id, row: "A", number: 4, type: "premium", status: "booked" },
+  ]);
+
+  const suggestRes = await request(app)
+    .post("/api/seats/suggest")
+    .set(authHeader)
+    .send({ showId: String(show._id), count: 2, preference: "center" });
+
+  assert.equal(suggestRes.status, 200);
+  assert.equal(suggestRes.body.success, true);
+  assert.equal(suggestRes.body.data.seatIds.length, 2);
+  assert.equal(suggestRes.body.data.seatLabels.length, 2);
+});
+
+test("booking flow: lock seats -> booking -> initiate -> confirm -> status -> ticket", async () => {
   const token = await registerUserAndGetToken();
   const authHeader = { Authorization: `Bearer ${token}` };
 
@@ -161,27 +240,127 @@ test("booking flow: lock seats -> booking -> payment -> ticket", async () => {
 
   const bookingId = bookingRes.body.data._id;
 
-  const orderRes = await request(app)
-    .post("/api/payments/create-order")
+  const quoteRes = await request(app).get(`/api/bookings/${bookingId}/quote`).set(authHeader);
+  assert.equal(quoteRes.status, 200);
+  assert.equal(quoteRes.body.success, true);
+  assert.ok(quoteRes.body.data.totalPayable >= quoteRes.body.data.baseAmount);
+
+  const initiateRes = await request(app)
+    .post("/api/payments/initiate")
+    .set(authHeader)
+    .set({ "X-Idempotency-Key": "idem-test-1" })
+    .send({ bookingId, idempotencyKey: "idem-test-1" });
+
+  assert.equal(initiateRes.status, 200);
+  assert.equal(initiateRes.body.success, true);
+  assert.ok(initiateRes.body.data.orderId);
+  assert.ok(initiateRes.body.data.transactionId);
+  assert.ok(initiateRes.body.data.gatewayToken);
+  assert.ok(initiateRes.body.data.gatewayTokenExpiresAt);
+
+  const otpRes = await request(app)
+    .post("/api/payments/request-otp")
+    .set(authHeader)
+    .send({
+      transactionId: initiateRes.body.data.transactionId,
+      gatewayToken: initiateRes.body.data.gatewayToken,
+      gatewayTokenExpiresAt: initiateRes.body.data.gatewayTokenExpiresAt,
+      method: "upi",
+      upiId: "test@upi",
+    });
+
+  assert.equal(otpRes.status, 200);
+  assert.equal(otpRes.body.success, true);
+  assert.equal(otpRes.body.data.method, "upi");
+  assert.ok(otpRes.body.data.otpExpiresAt);
+
+  const confirmRes = await request(app)
+    .post("/api/payments/confirm")
+    .set(authHeader)
+    .send({
+      transactionId: initiateRes.body.data.transactionId,
+      gatewayToken: initiateRes.body.data.gatewayToken,
+      gatewayTokenExpiresAt: initiateRes.body.data.gatewayTokenExpiresAt,
+      paymentId: "demo_payment_id",
+      paymentOtp: "000000",
+      method: "upi",
+    });
+
+  assert.equal(confirmRes.status, 200);
+  assert.equal(confirmRes.body.success, true);
+  assert.equal(confirmRes.body.data.booking.status, "confirmed");
+  assert.equal(confirmRes.body.data.paymentStatus, "success");
+  assert.ok(confirmRes.body.data.ticket.ticketCode);
+
+  const statusRes = await request(app)
+    .get(`/api/payments/status/${initiateRes.body.data.transactionId}`)
+    .set(authHeader);
+
+  assert.equal(statusRes.status, 200);
+  assert.equal(statusRes.body.success, true);
+  assert.equal(statusRes.body.data.paymentStatus, "success");
+  assert.equal(statusRes.body.data.booking.status, "confirmed");
+});
+
+test("payment confirm is idempotent for same successful transaction", async () => {
+  const token = await registerUserAndGetToken();
+  const authHeader = { Authorization: `Bearer ${token}` };
+
+  const movie = await Movie.create({
+    title: "Idempotent Flow Movie",
+    overview: "Idempotent flow movie",
+    language: "en",
+    duration: 120,
+    rating: 8.2,
+    popularity: 10,
+    isActive: true,
+  });
+
+  const show = await Show.create({
+    movie: movie._id,
+    theatreName: "CinemaSync Multiplex",
+    screenName: "Screen 1",
+    showTime: new Date(Date.now() + 60 * 60 * 1000),
+    price: 250,
+    totalSeats: 10,
+    status: "active",
+  });
+
+  const seats = await Seat.insertMany([
+    { show: show._id, row: "B", number: 1, type: "standard", status: "available" },
+  ]);
+
+  const seatIds = seats.map((seat) => String(seat._id));
+
+  await request(app)
+    .post("/api/seats/lock")
+    .set(authHeader)
+    .send({ showId: String(show._id), seatIds });
+
+  const bookingRes = await request(app)
+    .post("/api/bookings")
+    .set(authHeader)
+    .send({ showId: String(show._id), seatIds });
+
+  const bookingId = bookingRes.body.data._id;
+
+  const initiateRes = await request(app)
+    .post("/api/payments/initiate")
     .set(authHeader)
     .send({ bookingId });
 
-  assert.equal(orderRes.status, 200);
-  assert.equal(orderRes.body.success, true);
-  assert.ok(orderRes.body.data.orderId);
+  const payload = {
+    transactionId: initiateRes.body.data.transactionId,
+    gatewayToken: initiateRes.body.data.gatewayToken,
+    gatewayTokenExpiresAt: initiateRes.body.data.gatewayTokenExpiresAt,
+    paymentId: "demo_payment_id_2",
+  };
 
-  const verifyRes = await request(app)
-    .post("/api/payments/verify")
-    .set(authHeader)
-    .send({
-      bookingId,
-      orderId: orderRes.body.data.orderId,
-      paymentId: "demo_payment_id",
-      signature: "demo_signature",
-    });
+  const confirmFirst = await request(app).post("/api/payments/confirm").set(authHeader).send(payload);
+  const confirmSecond = await request(app).post("/api/payments/confirm").set(authHeader).send(payload);
 
-  assert.equal(verifyRes.status, 200);
-  assert.equal(verifyRes.body.success, true);
-  assert.equal(verifyRes.body.data.booking.status, "confirmed");
-  assert.ok(verifyRes.body.data.ticket.ticketCode);
+  assert.equal(confirmFirst.status, 200);
+  assert.equal(confirmSecond.status, 200);
+  assert.equal(confirmFirst.body.data.booking._id, confirmSecond.body.data.booking._id);
+  assert.equal(confirmSecond.body.data.paymentStatus, "success");
 });
