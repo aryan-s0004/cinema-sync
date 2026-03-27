@@ -21,6 +21,5 @@ const ticketSchema = new mongoose.Schema(
 
 ticketSchema.index({ user: 1, createdAt: -1 });
 ticketSchema.index({ booking: 1, user: 1 });
-ticketSchema.index({ ticketCode: 1 });
 
 module.exports = mongoose.model("Ticket", ticketSchema);
