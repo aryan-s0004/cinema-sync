@@ -3,11 +3,6 @@ const { isNonEmptyString, parsePagination, validateObjectId } = require("./commo
 const recommendValidator = (body) => {
   const mood = isNonEmptyString(body.mood) ? body.mood : "";
   const genre = isNonEmptyString(body.genre) ? body.genre : "";
-
-  if (!mood && !genre) {
-    return { error: "At least one of mood or genre is required" };
-  }
-
   return { value: { mood, genre } };
 };
 

@@ -1,4 +1,5 @@
 const Movie = require("../models/Movie");
+const Booking = require("../models/Booking");
 const ApiResponse = require("../utils/ApiResponse");
 const { discoverMoviesByGenreName } = require("../services/tmdbService");
 const { getCache, setCache } = require("../services/cacheService");
@@ -38,28 +39,68 @@ const callOpenAIForGenre = async ({ mood, genre }) => {
   return data.choices?.[0]?.message?.content?.trim() || null;
 };
 
+const inferGenreFromHistory = async (userId) => {
+  if (!userId) return null;
+
+  const recentBookings = await Booking.find({ user: userId, status: "confirmed" })
+    .populate({ path: "show", populate: { path: "movie", select: "genres" } })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
+
+  const genreCount = new Map();
+  for (const booking of recentBookings) {
+    const genres = booking?.show?.movie?.genres || [];
+    for (const genre of genres) {
+      const key = String(genre || "").trim();
+      if (!key) continue;
+      genreCount.set(key, (genreCount.get(key) || 0) + 1);
+    }
+  }
+
+  const sorted = [...genreCount.entries()].sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] || null;
+};
+
 const recommendMovies = async (req, res, next) => {
   try {
     const { mood, genre } = req.body || {};
-    const cacheKey = `recommend:${String(mood || "").toLowerCase()}:${String(genre || "").toLowerCase()}`;
+    const userId = req.user?._id ? String(req.user._id) : "guest";
+    const cacheKey = `recommend:${userId}:${String(mood || "").toLowerCase()}:${String(genre || "").toLowerCase()}`;
     const cached = getCache(cacheKey);
     if (cached) {
       return res.json(new ApiResponse(200, cached, "Recommendations fetched (cached)"));
     }
 
-    const aiGenre = await callOpenAIForGenre({ mood, genre });
-    const selectedGenre = String(aiGenre || genre || moodToGenre[(mood || "").toLowerCase()] || "Action").trim();
+    const historyGenre = await inferGenreFromHistory(req.user?._id);
+
+    let aiGenre = null;
+    try {
+      aiGenre = await callOpenAIForGenre({ mood, genre });
+    } catch (_err) {
+      aiGenre = null;
+    }
+    const selectedGenre = String(
+      aiGenre || genre || moodToGenre[(mood || "").toLowerCase()] || historyGenre || "Action"
+    ).trim();
 
     let recommendations = [];
     if (process.env.TMDB_API_KEY) {
-      recommendations = await discoverMoviesByGenreName(selectedGenre);
+      try {
+        recommendations = await discoverMoviesByGenreName(selectedGenre);
+      } catch (_tmdbErr) {
+        recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10).lean();
+      }
     } else {
       recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10).lean();
     }
 
     const payload = {
-      input: { mood, genre },
+      input: { mood, genre, userId: req.user?._id || null },
       selectedGenre,
+      reason: historyGenre
+        ? `Personalized using your recent booking preferences (${historyGenre})`
+        : "Based on trending and selected genre",
       recommendations,
     };
 
