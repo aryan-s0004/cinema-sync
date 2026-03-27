@@ -4,6 +4,7 @@ const Ticket = require("../models/Ticket");
 const ApiError = require("../utils/ApiError");
 
 const ticketsDir = path.resolve(__dirname, "../../tickets");
+const MAX_TICKET_FILES = Math.max(Number(process.env.TICKET_FILE_RETENTION || 60), 10);
 
 const ensureTicketsDir = async () => {
   await fs.mkdir(ticketsDir, { recursive: true });
@@ -65,6 +66,26 @@ const writeTicketFile = async (ticket) => {
   return fullPath;
 };
 
+const pruneOldTicketFiles = async () => {
+  await ensureTicketsDir();
+  const files = await fs.readdir(ticketsDir);
+  const ticketFiles = files.filter((file) => file.endsWith(".json"));
+  if (ticketFiles.length <= MAX_TICKET_FILES) return;
+
+  const withStats = await Promise.all(
+    ticketFiles.map(async (file) => {
+      const fullPath = path.join(ticketsDir, file);
+      const stat = await fs.stat(fullPath);
+      return { fullPath, mtimeMs: stat.mtimeMs };
+    })
+  );
+
+  withStats.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const stale = withStats.slice(MAX_TICKET_FILES);
+
+  await Promise.all(stale.map((item) => fs.unlink(item.fullPath).catch(() => {})));
+};
+
 const createOrUpdateTicketForBooking = async (bookingDoc, userDoc) => {
   const existing = await Ticket.findOne({ booking: bookingDoc._id, user: userDoc._id });
   const ticketCode = existing?.ticketCode || makeTicketCode(bookingDoc._id);
@@ -78,6 +99,7 @@ const createOrUpdateTicketForBooking = async (bookingDoc, userDoc) => {
   );
 
   const filePath = await writeTicketFile(ticket);
+  await pruneOldTicketFiles();
   if (ticket.filePath !== filePath) {
     ticket.filePath = filePath;
     await ticket.save();
