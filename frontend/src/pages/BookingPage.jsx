@@ -14,6 +14,9 @@ const BookingPage = () => {
   const [show, setShow] = useState(null);
   const [loadingShow, setLoadingShow] = useState(true);
   const [showError, setShowError] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionInfo, setSuggestionInfo] = useState("");
+  const [intentLoaded, setIntentLoaded] = useState(false);
 
   const {
     seats,
@@ -25,6 +28,8 @@ const BookingPage = () => {
     processing,
     error,
     toggleSeatSelection,
+    applySeatSelection,
+    suggestBestSeats,
     createBookingFromSelection
   } = useBooking(showId);
 
@@ -53,12 +58,74 @@ const BookingPage = () => {
     return () => clearInterval(timer);
   }, [refetchSeats]);
 
+  useEffect(() => {
+    const loadIntent = async () => {
+      try {
+        const intent = await bookingApi.getActiveBookingIntent(showId);
+        if (!intent?.seatIds?.length) {
+          setIntentLoaded(true);
+          return;
+        }
+
+        const applied = applySeatSelection(intent.seatIds, "replace");
+        if (applied.length) {
+          setSuggestionInfo(`Restored ${applied.length} seat(s) from your last session.`);
+        }
+      } catch (_err) {
+        // Intent recovery is best-effort and should not block booking.
+      } finally {
+        setIntentLoaded(true);
+      }
+    };
+
+    loadIntent();
+  }, [applySeatSelection, showId]);
+
+  useEffect(() => {
+    if (!intentLoaded) return;
+
+    const timeout = setTimeout(() => {
+      bookingApi
+        .upsertBookingIntent({
+          showId,
+          seatIds: selectedSeatIds,
+          step: "seat_selection",
+          lockUntil,
+          active: selectedSeatIds.length > 0,
+        })
+        .catch(() => {});
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [intentLoaded, lockUntil, selectedSeatIds, showId]);
+
   const selectedSeats = useMemo(
     () => seats.filter((seat) => selectedSeatIds.includes(seat._id)),
     [seats, selectedSeatIds]
   );
 
   const amount = (show?.price || 0) * selectedSeatIds.length;
+  const quotePreview = useMemo(() => {
+    const base = Math.max(Number(amount || 0), 0);
+    const convenienceFee = Math.round(Math.max(15, base * 0.03));
+    const taxes = Math.round(convenienceFee * 0.18);
+    return { baseAmount: base, convenienceFee, taxes, totalPayable: base + convenienceFee + taxes };
+  }, [amount]);
+
+  const handleAutoPick = async (preference = "center") => {
+    const targetCount = selectedSeatIds.length || 2;
+    try {
+      setSuggesting(true);
+      const suggestion = await suggestBestSeats({ count: targetCount, preference });
+      if (suggestion?.seatLabels?.length) {
+        setSuggestionInfo(`Suggested seats: ${suggestion.seatLabels.join(", ")} (${preference}, ${targetCount} seats)`);
+      }
+    } catch (err) {
+      setSuggestionInfo(err.response?.data?.message || "Could not auto-pick seats right now.");
+    } finally {
+      setSuggesting(false);
+    }
+  };
 
   const handleProceed = async () => {
     const booking = await createBookingFromSelection();
@@ -90,6 +157,20 @@ const BookingPage = () => {
           <p className="mb-4 text-center text-sm text-slate-500">SCREEN THIS WAY</p>
           <SeatGrid seats={seats} selectedSeatIds={selectedSeatIds} onToggle={toggleSeatSelection} />
 
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" loading={suggesting} onClick={() => handleAutoPick("center")}>
+              Auto Pick Center
+            </Button>
+            <Button type="button" variant="secondary" loading={suggesting} onClick={() => handleAutoPick("budget")}>
+              Auto Pick Budget
+            </Button>
+            <Button type="button" variant="secondary" loading={suggesting} onClick={() => handleAutoPick("premium")}>
+              Auto Pick Premium
+            </Button>
+          </div>
+
+          {suggestionInfo ? <p className="mt-3 text-xs text-cyan-300">{suggestionInfo}</p> : null}
+
           <div className="mt-4 flex flex-wrap gap-3 text-xs text-slate-400">
             <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded bg-slate-900" /> Available</span>
             <span className="inline-flex items-center gap-2"><i className="h-3 w-3 rounded bg-emerald-500" /> Selected</span>
@@ -102,6 +183,7 @@ const BookingPage = () => {
         <BookingSummary
           selectedCount={selectedSeatIds.length}
           amount={formatPrice(amount)}
+          quote={selectedSeatIds.length ? quotePreview : null}
           status={lockUntil ? `Lock valid till ${formatDateTime(lockUntil)}` : "Select seats to continue"}
         />
 
