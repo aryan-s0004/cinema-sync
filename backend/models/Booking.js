@@ -13,10 +13,30 @@ const bookingSchema = new mongoose.Schema(
     },
     payment: {
       provider: { type: String, default: "mock" },
+      transactionId: { type: String, default: null },
       orderId: { type: String, default: null },
+      method: { type: String, enum: ["upi", "card", "netbanking", null], default: null },
+      methodRef: { type: String, default: null },
       paymentId: { type: String, default: null },
       signature: { type: String, default: null },
-      status: { type: String, enum: ["created", "captured", "failed"], default: null },
+      status: {
+        type: String,
+        enum: ["initiated", "processing", "success", "failed", "created", "captured"],
+        default: null,
+      },
+      locked: { type: Boolean, default: false },
+      idempotencyKey: { type: String, default: null },
+      gatewayTokenExpiresAt: { type: Date, default: null },
+      paymentExpiresAt: { type: Date, default: null },
+      otpHash: { type: String, default: null },
+      otpExpiresAt: { type: Date, default: null },
+      otpAttempts: { type: Number, default: 0 },
+      initiatedAt: { type: Date, default: null },
+      processingAt: { type: Date, default: null },
+      confirmedAt: { type: Date, default: null },
+      failedAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
+      failureReason: { type: String, default: null },
     },
   },
   { timestamps: true }
@@ -24,6 +44,8 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.index({ user: 1, createdAt: -1 });
 bookingSchema.index({ show: 1, status: 1, createdAt: -1 });
+bookingSchema.index({ status: 1, "payment.paymentExpiresAt": 1 });
 bookingSchema.index({ "payment.orderId": 1 }, { sparse: true });
+bookingSchema.index({ "payment.transactionId": 1 }, { sparse: true, unique: true });
 
 module.exports = mongoose.model("Booking", bookingSchema);
