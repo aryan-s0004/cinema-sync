@@ -8,6 +8,14 @@ const userSchema = new mongoose.Schema(
     password: { type: String, required: true, minlength: 6 },
     role: { type: String, enum: ["user", "admin"], default: "user" },
     refreshToken: { type: String, default: null },
+    emailVerified: { type: Boolean, default: false },
+    otp: {
+      hash: { type: String, default: null },
+      purpose: { type: String, enum: ["email_verification", "login"], default: null },
+      expiresAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
+      lastSentAt: { type: Date, default: null },
+    },
   },
   { timestamps: true }
 );

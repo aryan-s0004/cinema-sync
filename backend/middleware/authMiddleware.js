@@ -16,7 +16,7 @@ const protect = async (req, _res, next) => {
     const token = authHeader.split(" ")[1];
     const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-    const user = await User.findById(payload.id).select("-password -refreshToken");
+    const user = await User.findById(payload.id).select("-password -refreshToken -otp.hash");
     if (!user) {
       throw new ApiError(401, "User not found for token");
     }
@@ -35,4 +35,23 @@ const adminOnly = (req, _res, next) => {
   next();
 };
 
-module.exports = { protect, adminOnly };
+const optionalProtect = async (req, _res, next) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    if (!authHeader.startsWith("Bearer ")) {
+      return next();
+    }
+
+    const token = authHeader.split(" ")[1];
+    const payload = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const user = await User.findById(payload.id).select("-password -refreshToken -otp.hash");
+    if (user) {
+      req.user = user;
+    }
+    return next();
+  } catch (_error) {
+    return next();
+  }
+};
+
+module.exports = { protect, adminOnly, optionalProtect };
