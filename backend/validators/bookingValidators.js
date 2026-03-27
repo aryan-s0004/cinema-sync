@@ -32,6 +32,30 @@ const seatLockValidator = (body) => {
   };
 };
 
+const seatSuggestionValidator = (body) => {
+  const showError = validateObjectId("showId", body.showId);
+  if (showError) return { error: showError };
+
+  const count = Number.parseInt(body.count, 10);
+  if (!Number.isInteger(count) || count < 1 || count > 10) {
+    return { error: "count must be an integer between 1 and 10" };
+  }
+
+  const allowedPreferences = ["center", "front", "back", "budget", "premium"];
+  const preference = body.preference ? String(body.preference).toLowerCase() : "center";
+  if (!allowedPreferences.includes(preference)) {
+    return { error: `preference must be one of: ${allowedPreferences.join(", ")}` };
+  }
+
+  return {
+    value: {
+      showId: body.showId,
+      count,
+      preference,
+    },
+  };
+};
+
 const paginationValidator = (query) => {
   const pagination = parsePagination(query, { defaultLimit: 20, maxLimit: 100 });
   return { value: { ...query, ...pagination } };
@@ -46,6 +70,7 @@ const bookingIdParamValidator = (params) => {
 module.exports = {
   showIdParamValidator,
   seatLockValidator,
+  seatSuggestionValidator,
   paginationValidator,
   bookingIdParamValidator,
 };
