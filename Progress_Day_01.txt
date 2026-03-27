@@ -1,50 +1,53 @@
-As of **March 27, 2026**, here’s the real progress snapshot.
+CinemaSync Progress Snapshot (Updated: 2026-03-28)
+=================================================
 
-**Overall progress**
-- Project setup: **done**
-- Backend feature drafting: **partly done (~60%)**
-- Frontend feature implementation: **early stage (~20%)**
-- End-to-end working app: **not done yet**
-- Total overall: **~40% complete**
+Overall Completion
+- Backend: ~85%
+- Frontend: ~80%
+- End-to-end booking + payment simulation: working
+- Test and build health: passing
 
-**Features added so far**
-1. Auth backend logic added:
-- Register/login
-- Token refresh/logout/me logic (written in controller)
+Major Features Delivered
+- Authentication
+  - JWT access/refresh flow
+  - OTP-based login verification
+  - Account email verification OTP
+  - OTP resend flow with cooldown and attempt handling
 
-2. Movie features drafted:
-- Get movies, get by id, create, update, delete (admin-protected design present)
+- Booking and Seats
+  - Seat lock + lock expiry
+  - Seat suggestion API (smart contiguous seat suggestions)
+  - Booking intent persistence for session recovery
+  - Booking quote endpoint with fee/tax breakdown
 
-3. Show features drafted:
-- List/filter shows, get by id, create show, cancel show
-- Auto seat generation on show creation
+- Payments (realistic simulation)
+  - Payment state model (initiated/processing/success/failed)
+  - Payment method handling (UPI, card, netbanking)
+  - Transaction-based payment OTP
+  - Payment session expiry handling
+  - Auto-expire pending bookings and release seats
 
-4. Seat features drafted:
-- Fetch seats by show
-- Lock seats for booking window
+- Notifications and Ticketing
+  - Account-created email
+  - Login alert email
+  - Booking confirmation email with ticket details
+  - Ticket artifact generation and retention cleanup
 
-5. Booking features drafted:
-- Create booking from locked seats
-- My bookings list
-- Booking details
-- Cancel booking + release seats
+- Frontend UX
+  - Responsive navigation and layout improvements
+  - Login/register OTP flows with countdown timers
+  - Realistic payment UI with validation and retry handling
+  - Session restore and safe navigation behavior
+  - Recommendation and home-page interaction polish
 
-6. Payment draft added:
-- Create payment order + verify payment files exist
+- Quality and Reliability
+  - Integration tests expanded for OTP and payment flows
+  - Validation hardening across auth, booking, seat, payment
+  - Build and test pipelines remain green
 
-7. Frontend pieces added:
-- React app scaffold
-- Axios instance with auth token + refresh interceptor
-- Multiple page/component/service files created (many are placeholders right now)
+Current Focus
+- Final SMTP production setup for real inbox OTP delivery
+- Optional deploy/runtime hardening for production rollout
 
-8. Frontend build status:
-- `npm run build` succeeds
-
-**What is still left / blocking**
-1. Backend has critical wiring issues, so server is not fully runnable.
-2. Some backend models/controllers have wrong imports/schema definitions.
-3. Payment route files are in the wrong location (not wired correctly).
-4. Most frontend feature pages are empty and routing is not set up for full flow.
-5. No full booking-payment-confirmation end-to-end flow yet.
-
-If you want, next I can give you a **strict phase-wise “Done / In Progress / Pending” checklist** that you can use directly in your project report.
+Repository
+- https://github.com/aryan-s0004/CinemaSync
