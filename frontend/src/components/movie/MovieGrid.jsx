@@ -4,7 +4,7 @@ import SkeletonCard from "../ui/SkeletonCard";
 const MovieGrid = ({ movies = [], loading = false, emptyText = "No movies found.", watchlistIds = [], onToggleWatchlist }) => {
   if (loading) {
     return (
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 10 }).map((_, index) => (
           <SkeletonCard key={index} />
         ))}
@@ -17,7 +17,7 @@ const MovieGrid = ({ movies = [], loading = false, emptyText = "No movies found.
   }
 
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {movies.map((movie) => (
         <MovieCard
           key={movie._id || movie.tmdbId}

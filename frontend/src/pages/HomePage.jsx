@@ -1,4 +1,4 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import useDebounce from "../hooks/useDebounce";
 import useMovies from "../hooks/useMovies";
@@ -7,23 +7,60 @@ import RecommendationSection from "../components/movie/RecommendationSection";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import { AppContext } from "../context/AppContext";
+import { AuthContext } from "../context/AuthContext";
+import { bookingApi } from "../api/bookings";
 
-const moodOptions = ["excited", "happy", "romantic", "thoughtful", "family", "scary"];
+const inferGenreFromQuery = (query) => {
+  const normalized = String(query || "").toLowerCase();
+  const map = [
+    { key: "action", genre: "Action" },
+    { key: "rom", genre: "Romance" },
+    { key: "love", genre: "Romance" },
+    { key: "horror", genre: "Horror" },
+    { key: "thriller", genre: "Thriller" },
+    { key: "comedy", genre: "Comedy" },
+    { key: "family", genre: "Family" },
+    { key: "sci", genre: "Science Fiction" },
+  ];
+
+  const match = map.find((item) => normalized.includes(item.key));
+  return match?.genre || "Action";
+};
 
 const HomePage = () => {
   const navigate = useNavigate();
-  const { watchlist, isInWatchlist, addToWatchlist, removeFromWatchlist, recommendMood, setRecommendMood } = useContext(AppContext);
+  const { isAuthenticated } = useContext(AuthContext);
+  const { watchlist, isInWatchlist, addToWatchlist, removeFromWatchlist } = useContext(AppContext);
   const [query, setQuery] = useState("");
+  const [activeIntent, setActiveIntent] = useState(null);
 
   const debounced = useDebounce(query, 350);
-  const { filteredMovies, loading, error, recommendations, recLoading, selectedGenre } = useMovies({
+  const recommendationPayload = useMemo(() => ({ genre: inferGenreFromQuery(debounced) }), [debounced]);
+  const { filteredMovies, loading, error, recommendations, recLoading, selectedGenre, recommendationReason } = useMovies({
     type: "trending",
     query: debounced,
     includeRecommendations: true,
-    mood: recommendMood
+    recommendationPayload
   });
 
   const watchlistIds = useMemo(() => watchlist.map((movie) => movie._id || movie.tmdbId), [watchlist]);
+
+  useEffect(() => {
+    const loadIntent = async () => {
+      if (!isAuthenticated) {
+        setActiveIntent(null);
+        return;
+      }
+      try {
+        const intent = await bookingApi.getActiveBookingIntent();
+        setActiveIntent(intent);
+      } catch (_err) {
+        setActiveIntent(null);
+      }
+    };
+
+    loadIntent();
+  }, [isAuthenticated]);
 
   const toggleWatchlist = (movie) => {
     const movieId = movie?._id || movie?.tmdbId;
@@ -47,44 +84,50 @@ const HomePage = () => {
       <section className="grid gap-6 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-950 via-brand-900/40 to-slate-900 p-6 md:grid-cols-2 md:p-8">
         <div className="space-y-4">
           <p className="text-sm uppercase tracking-[0.25em] text-cyan-300">CinemaSync</p>
-          <h1 className="text-3xl font-semibold text-white md:text-4xl">Discover movies, reserve seats, and book in minutes.</h1>
-          <p className="text-slate-300">Live TMDB powered catalog with seat locking and instant booking confirmation.</p>
+          <h1 className="text-3xl font-semibold text-white md:text-4xl">Pick a movie. Lock seats. Pay once.</h1>
+          <p className="text-slate-300">Fast, clean booking flow with live availability and payment-safe recovery.</p>
 
           <form onSubmit={submitSearch} className="flex flex-col gap-3 sm:flex-row">
             <Input
-              placeholder="Search movies, genres, actors..."
+              placeholder="Search by title or genre..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
             <Button type="submit">Search</Button>
           </form>
-
-          <div className="flex items-center gap-3">
-            <label className="text-sm text-slate-300">Recommendation mood</label>
-            <select
-              value={recommendMood}
-              onChange={(event) => setRecommendMood(event.target.value)}
-              className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200"
-            >
-              {moodOptions.map((mood) => (
-                <option key={mood} value={mood}>
-                  {mood}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => navigate("/search?q=action")}>
+              Action Picks
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate("/search?q=romance")}>
+              Romance Picks
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => navigate("/search?q=family")}>
+              Family Picks
+            </Button>
           </div>
         </div>
 
         <div className="card-surface flex flex-col justify-between p-6">
           <div>
             <h2 className="text-xl font-semibold text-white">Quick Start Booking</h2>
-            <p className="mt-2 text-sm text-slate-400">1. Pick a movie 2. Pick showtime 3. Select seats 4. Pay 5. Get your ticket.</p>
+            <p className="mt-2 text-sm text-slate-400">Ready in 5 taps from discovery to ticket.</p>
           </div>
 
           <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
             <span>Saved Watchlist</span>
             <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">{watchlist.length} movies</span>
           </div>
+
+          {activeIntent?.show?._id ? (
+            <button
+              type="button"
+              onClick={() => navigate(`/booking/${activeIntent.show._id}`)}
+              className="mt-4 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-left text-sm text-cyan-200 hover:bg-cyan-500/20"
+            >
+              Continue booking: {activeIntent.show.movie?.title || "selected movie"} ({activeIntent.seatIds?.length || 0} seats)
+            </button>
+          ) : null}
 
           <Link to="/dashboard" className="mt-5 text-sm text-cyan-300 hover:text-cyan-200">
             Go to dashboard
@@ -112,6 +155,7 @@ const HomePage = () => {
         movies={recommendations}
         loading={recLoading}
         selectedGenre={selectedGenre}
+        reason={recommendationReason}
         watchlistIds={watchlistIds}
         onToggleWatchlist={toggleWatchlist}
       />

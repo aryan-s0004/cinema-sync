@@ -17,7 +17,6 @@ const parseStored = () => {
 
 export const AppProvider = ({ children }) => {
   const [watchlist, setWatchlist] = useState(parseStored);
-  const [recommendMood, setRecommendMood] = useState("excited");
 
   const saveWatchlist = (next) => {
     setWatchlist(next);
@@ -40,13 +39,11 @@ export const AppProvider = ({ children }) => {
   const value = useMemo(
     () => ({
       watchlist,
-      recommendMood,
-      setRecommendMood,
       addToWatchlist,
       removeFromWatchlist,
       isInWatchlist
     }),
-    [watchlist, recommendMood]
+    [watchlist]
   );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

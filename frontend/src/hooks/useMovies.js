@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import useFetch from "./useFetch";
 import { movieApi } from "../api/movies";
 
-const useMovies = ({ type = "trending", query = "", includeRecommendations = false, mood = "excited" } = {}) => {
+const useMovies = ({ type = "trending", query = "", includeRecommendations = false, recommendationPayload } = {}) => {
   const fetcher = useCallback(() => {
     if (type === "all") return movieApi.all();
     return movieApi.trending();
@@ -18,7 +18,10 @@ const useMovies = ({ type = "trending", query = "", includeRecommendations = fal
     return movies.filter((movie) => movie.title?.toLowerCase().includes(normalized));
   }, [movies, query]);
 
-  const recommendationFetcher = useCallback(() => movieApi.recommend({ mood }), [mood]);
+  const recommendationFetcher = useCallback(
+    () => movieApi.recommend(recommendationPayload || { genre: "Action" }),
+    [recommendationPayload]
+  );
 
   const {
     data: recommendationData,
@@ -35,6 +38,7 @@ const useMovies = ({ type = "trending", query = "", includeRecommendations = fal
     refetch,
     recommendations: recommendationData?.recommendations || [],
     selectedGenre: recommendationData?.selectedGenre || "",
+    recommendationReason: recommendationData?.reason || "",
     recLoading,
     recError,
     refetchRecommendations
