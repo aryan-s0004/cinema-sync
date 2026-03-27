@@ -7,6 +7,22 @@ const ApiResponse = require("../utils/ApiResponse");
 const { releaseExpiredLocks } = require("./seatController");
 const { parsePositiveInt } = require("../validators/common");
 
+const buildQuote = (baseAmount, seatCount) => {
+  const normalizedBase = Math.max(Number(baseAmount || 0), 0);
+  const convenienceFee = Math.round(Math.max(15, normalizedBase * 0.03));
+  const taxes = Math.round(convenienceFee * 0.18);
+  const totalPayable = normalizedBase + convenienceFee + taxes;
+
+  return {
+    seatCount,
+    currency: "INR",
+    baseAmount: normalizedBase,
+    convenienceFee,
+    taxes,
+    totalPayable,
+  };
+};
+
 const createBooking = async (req, res, next) => {
   try {
     const { showId, seatIds } = req.body;
@@ -67,12 +83,18 @@ const createBooking = async (req, res, next) => {
     const totalAmount = show.price * uniqueSeatIds.length;
     let booking;
     try {
+      const paymentExpiresAt = new Date(Date.now() + Math.max(Number(process.env.PAYMENT_WINDOW_MINUTES || 10), 5) * 60 * 1000);
       booking = await Booking.create({
         user: userId,
         show: showId,
         seats: uniqueSeatIds,
         totalAmount,
         status: "pending_payment",
+        payment: {
+          status: "initiated",
+          paymentExpiresAt,
+          initiatedAt: new Date(),
+        },
       });
     } catch (error) {
       await Seat.updateMany(
@@ -135,6 +157,27 @@ const getBookingById = async (req, res, next) => {
   }
 };
 
+const getBookingQuote = async (req, res, next) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.id, user: req.user._id }).select(
+      "_id seats totalAmount status"
+    );
+
+    if (!booking) {
+      throw new ApiError(404, "Booking not found");
+    }
+
+    if (!["pending_payment", "confirmed"].includes(booking.status)) {
+      throw new ApiError(400, "Quote unavailable for this booking status");
+    }
+
+    const quote = buildQuote(booking.totalAmount, booking.seats.length);
+    res.json(new ApiResponse(200, { bookingId: String(booking._id), ...quote }, "Booking quote fetched"));
+  } catch (error) {
+    next(error);
+  }
+};
+
 const cancelBooking = async (req, res, next) => {
   try {
     const booking = await Booking.findOne({ _id: req.params.id, user: req.user._id });
@@ -160,4 +203,4 @@ const cancelBooking = async (req, res, next) => {
   }
 };
 
-module.exports = { createBooking, getMyBookings, getBookingById, cancelBooking };
+module.exports = { createBooking, getMyBookings, getBookingById, getBookingQuote, cancelBooking };
