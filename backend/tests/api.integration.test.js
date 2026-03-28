@@ -140,6 +140,21 @@ test("GET /api/bookings/my returns 401 without token", async () => {
   assert.equal(response.body.success, false);
 });
 
+test("GET /api/auth/email-health is admin-protected", async () => {
+  const userToken = await registerUserAndGetToken();
+  const adminToken = await registerAdminAndGetToken();
+
+  const noAuthRes = await request(app).get("/api/auth/email-health");
+  assert.equal(noAuthRes.status, 401);
+
+  const userRes = await request(app).get("/api/auth/email-health").set({ Authorization: `Bearer ${userToken}` });
+  assert.equal(userRes.status, 403);
+
+  const adminRes = await request(app).get("/api/auth/email-health").set({ Authorization: `Bearer ${adminToken}` });
+  assert.equal(adminRes.status, 200);
+  assert.equal(adminRes.body.success, true);
+});
+
 test("GET /api/unknown returns 404", async () => {
   const response = await request(app).get("/api/unknown");
 
