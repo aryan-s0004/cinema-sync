@@ -7,10 +7,19 @@ const app = require("./app");
 const { startBookingExpiryJob } = require("./services/bookingExpiryService");
 
 const requiredEnv = ["MONGO_URI", "JWT_ACCESS_SECRET", "JWT_REFRESH_SECRET"];
+const requiredInProduction = ["PAYMENT_WEBHOOK_SECRET", "TICKET_QR_SECRET"];
 
 for (const key of requiredEnv) {
   if (!process.env[key]) {
     throw new Error(`${key} is required in backend/.env`);
+  }
+}
+
+if (process.env.NODE_ENV === "production") {
+  for (const key of requiredInProduction) {
+    if (!process.env[key]) {
+      throw new Error(`${key} is required in production backend/.env`);
+    }
   }
 }
 

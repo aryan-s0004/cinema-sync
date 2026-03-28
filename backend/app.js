@@ -22,9 +22,27 @@ const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
 
+const isProduction = process.env.NODE_ENV === "production";
+const configuredOrigin = process.env.CLIENT_URL || "";
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || true,
+    origin: (origin, callback) => {
+      if (!isProduction) {
+        return callback(null, true);
+      }
+
+      if (!configuredOrigin) {
+        return callback(new Error("CLIENT_URL must be configured in production"), false);
+      }
+
+      // Allow same-origin server calls and explicit client URL.
+      if (!origin || origin === configuredOrigin) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("CORS origin denied"), false);
+    },
     credentials: true,
   })
 );
