@@ -104,3 +104,12 @@ Payload:
 - Use a managed MongoDB instance in production
 - Replace in-memory cache and rate limiter with Redis for horizontal scaling
 - Keep payment confirmation provider-authoritative (webhook signature verification)
+
+## Day 4 Security Notes
+
+- Payment confirmation now supports signature-verified provider callback flow:
+  - `POST /api/payments/webhook/mock`
+- Webhook payload includes unique `eventId` to prevent replay/reprocessing.
+- Auth diagnostics routes are admin-protected:
+  - `/api/auth/test`
+  - `/api/auth/email-health`

@@ -37,7 +37,7 @@ Base URL: `http://localhost:5000/api`
 - `POST /payments/request-otp` (Bearer)
 - `POST /payments/confirm` (Bearer)
 - `GET /payments/status/:transactionId` (Bearer)
-- `POST /payments/webhook/mock` (Signature verified; provider callback)
+- `POST /payments/webhook/mock` (Signature + event-id verified; provider callback)
 
 ## Recommendation
 - `POST /recommend`
@@ -69,4 +69,24 @@ Error:
   "data": null,
   "errors": []
 }
+```
+
+## Mock Webhook Signing (for local integration tests)
+
+Payload fields:
+
+```json
+{
+  "orderId": "order_...",
+  "paymentId": "pay_...",
+  "status": "success",
+  "eventId": "evt_...",
+  "signature": "<hex_hmac_sha256>"
+}
+```
+
+Signing string:
+
+```text
+orderId|paymentId|status|eventId
 ```
