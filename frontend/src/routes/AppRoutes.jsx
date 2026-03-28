@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import ProtectedRoute from "../components/common/ProtectedRoute";
+import AdminRoute from "../components/common/AdminRoute";
 import HomePage from "../pages/HomePage";
 import MovieDetailPage from "../pages/MovieDetailPage";
 import SearchPage from "../pages/SearchPage";
@@ -10,6 +11,10 @@ import BookingConfirmPage from "../pages/BookingConfirmPage";
 import LoginPage from "../pages/LoginPage";
 import RegisterPage from "../pages/RegisterPage";
 import DashboardPage from "../pages/DashboardPage";
+import AdminDashboard from "../pages/admin/AdminDashboard";
+import ManageShows from "../pages/admin/ManageShows";
+import ManageMovies from "../pages/admin/ManageMovies";
+import TicketScannerPage from "../pages/admin/TicketScannerPage";
 
 const AppRoutes = () => (
   <Routes>
@@ -60,6 +65,38 @@ const AppRoutes = () => (
 
     <Route path="/login" element={<LoginPage />} />
     <Route path="/register" element={<RegisterPage />} />
+    <Route
+      path="/admin"
+      element={
+        <AdminRoute>
+          <AdminDashboard />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/scanner"
+      element={
+        <AdminRoute>
+          <TicketScannerPage />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/shows"
+      element={
+        <AdminRoute>
+          <ManageShows />
+        </AdminRoute>
+      }
+    />
+    <Route
+      path="/admin/movies"
+      element={
+        <AdminRoute>
+          <ManageMovies />
+        </AdminRoute>
+      }
+    />
 
     <Route path="*" element={<p className="text-center text-slate-400">Page not found.</p>} />
   </Routes>

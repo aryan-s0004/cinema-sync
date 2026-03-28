@@ -1,5 +1,6 @@
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
@@ -21,10 +22,33 @@ const signRefreshToken = (userId) =>
     expiresIn: process.env.JWT_REFRESH_EXPIRY || "7d",
   });
 
+const mapUserAuthPayload = (user) => ({
+  _id: user._id,
+  name: user.name,
+  email: user.email,
+  role: user.role,
+  emailVerified: user.emailVerified,
+  authProvider: user.authProvider || "local",
+  avatar: user.avatar || "",
+});
+
 const OTP_EXPIRY_MINUTES = Math.max(Number(process.env.OTP_EXPIRY_MINUTES || 5), 2);
 const OTP_MIN_RESEND_SECONDS = Math.max(Number(process.env.OTP_MIN_RESEND_SECONDS || 30), 15);
 const OTP_MAX_ATTEMPTS = 5;
 const isDevLike = process.env.NODE_ENV !== "production";
+
+let googleClientInstance = null;
+const getGoogleClient = () => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new ApiError(500, "GOOGLE_CLIENT_ID is missing");
+  }
+
+  if (!googleClientInstance) {
+    googleClientInstance = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+  }
+
+  return googleClientInstance;
+};
 
 const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
 const hashOtp = (otp) => crypto.createHash("sha256").update(String(otp)).digest("hex");
@@ -122,12 +146,7 @@ const registerUser = async (req, res, next) => {
       new ApiResponse(
         201,
         {
-          user: {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-          },
+          user: mapUserAuthPayload(user),
           accessToken,
           refreshToken,
           emailVerification: {
@@ -154,7 +173,15 @@ const loginUser = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user || !(await user.matchPassword(password))) {
+    if (!user) {
+      throw new ApiError(401, "Invalid credentials");
+    }
+
+    if (user.authProvider === "google" && user.googleId) {
+      throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
+    }
+
+    if (!(await user.matchPassword(password))) {
       throw new ApiError(401, "Invalid credentials");
     }
 
@@ -212,13 +239,7 @@ const verifyLoginOtp = async (req, res, next) => {
       new ApiResponse(
         200,
         {
-          user: {
-            _id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            emailVerified: user.emailVerified,
-          },
+          user: mapUserAuthPayload(user),
           accessToken,
           refreshToken,
         },
@@ -245,6 +266,75 @@ const verifyAccountOtp = async (req, res, next) => {
     res.json(new ApiResponse(200, { emailVerified: true }, "Email verified successfully"));
   } catch (error) {
     next(error);
+  }
+};
+
+const googleAuth = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    const googleClient = getGoogleClient();
+    const ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload() || {};
+    const googleEmail = String(payload.email || "").trim().toLowerCase();
+    const googleId = String(payload.sub || "").trim();
+
+    if (!googleEmail || !googleEmail.includes("@")) {
+      throw new ApiError(400, "Google account email not available");
+    }
+    if (!googleId) {
+      throw new ApiError(401, "Invalid Google token subject");
+    }
+    if (payload.email_verified === false) {
+      throw new ApiError(401, "Google account email is not verified");
+    }
+
+    let user = await User.findOne({ email: googleEmail });
+
+    if (!user) {
+      user = await User.create({
+        name: payload.name || googleEmail.split("@")[0],
+        email: googleEmail,
+        authProvider: "google",
+        googleId,
+        avatar: payload.picture || "",
+        emailVerified: true,
+      });
+    } else {
+      if (!user.googleId) {
+        user.googleId = googleId;
+      }
+      if (payload.picture) {
+        user.avatar = payload.picture;
+      }
+      user.emailVerified = true;
+      await user.save();
+    }
+
+    const accessToken = signAccessToken(user._id);
+    const refreshToken = signRefreshToken(user._id);
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          user: mapUserAuthPayload(user),
+          accessToken,
+          refreshToken,
+        },
+        "Google login successful"
+      )
+    );
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return next(error);
+    }
+    return next(new ApiError(401, "Google authentication failed"));
   }
 };
 
@@ -391,6 +481,7 @@ const sendEmailTest = async (req, res, next) => {
 module.exports = {
   registerUser,
   loginUser,
+  googleAuth,
   verifyLoginOtp,
   verifyAccountOtp,
   resendOtp,

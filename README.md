@@ -1,6 +1,6 @@
 # CinemaSync
 
-CinemaSync is a full-stack MERN movie discovery and seat-booking platform with TMDB integration, protected booking flow, and ticket generation.
+CinemaSync is a full-stack MERN movie discovery and seat-booking platform with TMDB integration, protected booking flow, ticket PDF generation, and secure one-time QR entry validation.
 
 ## Monorepo Structure
 
@@ -15,6 +15,7 @@ CinemaSync is a full-stack MERN movie discovery and seat-booking platform with T
 - Seat locking with expiry
 - Booking and payment confirmation flow
 - Ticket generation + ticket retrieval APIs
+- Admin scan API with one-time ticket consumption (anti-reuse)
 - Request validation + sanitization + rate limiting
 - Integration tests using Node test runner + Supertest
 
@@ -25,6 +26,8 @@ CinemaSync is a full-stack MERN movie discovery and seat-booking platform with T
 - Seat selection and booking
 - Mock payment + confirmation
 - Dashboard with booking history and watchlist
+- Google Sign-In (ID token verification + JWT session)
+- AI-assisted recommendation blocks (home + post-booking)
 
 ## Quick Start
 
@@ -46,6 +49,46 @@ cd frontend
 copy .env.example .env
 npm install
 npm run dev
+```
+
+## Google Auth Setup
+
+1. Create a Web OAuth client in Google Cloud Console.
+2. Add allowed JS origins:
+   - `http://localhost:5173`
+3. Copy the Google client ID into:
+   - `frontend/.env` as `VITE_GOOGLE_CLIENT_ID`
+   - `backend/.env` as `GOOGLE_CLIENT_ID`
+4. Restart both backend and frontend after updating env values.
+
+The app login page supports both:
+- Email/password + OTP flow
+- Google Sign-In flow
+
+## Ticket Scan Security (Admin)
+
+- Signed QR payload is embedded in each generated ticket.
+- Scan endpoint validates signature + entry window and marks ticket as used on first successful scan.
+- Duplicate scans are rejected.
+
+Endpoint:
+
+```text
+POST /api/tickets/scan/validate
+```
+
+Auth:
+- Requires admin role (`Bearer` token).
+
+Payload:
+
+```json
+{
+  "qrData": "cinemasync://ticket/scan?token=...",
+  "consume": true,
+  "gate": "Gate A",
+  "deviceId": "scanner-01"
+}
 ```
 
 ## Default Local URLs

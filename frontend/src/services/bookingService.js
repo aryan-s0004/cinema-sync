@@ -8,7 +8,9 @@ export const bookingService = {
   bookingById: bookingApi.bookingById,
   createOrder: bookingApi.createOrder,
   verifyPayment: bookingApi.verifyPayment,
-  ticketByBooking: bookingApi.ticketByBooking
+  ticketByBooking: bookingApi.ticketByBooking,
+  scanTicket: bookingApi.scanTicket,
+  downloadTicket: bookingApi.downloadTicket,
 };
 
 export default bookingService;

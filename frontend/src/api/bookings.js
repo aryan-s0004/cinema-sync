@@ -1,6 +1,19 @@
 import api from "./client";
 
 const normalizeArray = (data) => (Array.isArray(data) ? data : []);
+const parseFilename = (contentDisposition = "") => {
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const basicMatch = /filename="?([^";]+)"?/i.exec(contentDisposition);
+  return basicMatch?.[1] || null;
+};
 
 export const bookingApi = {
   showById: async (showId) => (await api.get(`/shows/${showId}`)).data.data,
@@ -28,5 +41,13 @@ export const bookingApi = {
   paymentStatus: async (transactionId) => (await api.get(`/payments/status/${transactionId}`)).data.data,
   createOrder: async (bookingId) => (await api.post("/payments/create-order", { bookingId })).data.data,
   verifyPayment: async (payload) => (await api.post("/payments/verify", payload)).data.data,
-  ticketByBooking: async (bookingId) => (await api.get(`/tickets/booking/${bookingId}`)).data.data
+  ticketByBooking: async (bookingId) => (await api.get(`/tickets/booking/${bookingId}`)).data.data,
+  scanTicket: async (payload) => (await api.post("/tickets/scan/validate", payload)).data.data,
+  downloadTicket: async (ticketCode) => {
+    const response = await api.get(`/tickets/download/${ticketCode}`, { responseType: "blob" });
+    return {
+      blob: response.data,
+      filename: parseFilename(response.headers?.["content-disposition"]) || `${ticketCode}.pdf`,
+    };
+  },
 };

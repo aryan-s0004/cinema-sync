@@ -36,6 +36,11 @@ const Navbar = () => {
           </NavLink>
           {isAuthenticated ? (
             <>
+              {user?.role === "admin" ? (
+                <NavLink to="/admin/scanner" className={navClass}>
+                  Scanner
+                </NavLink>
+              ) : null}
               <NavLink to="/dashboard" className={navClass}>
                 Dashboard
               </NavLink>
@@ -70,6 +75,11 @@ const Navbar = () => {
           </NavLink>
           {isAuthenticated ? (
             <>
+              {user?.role === "admin" ? (
+                <NavLink to="/admin/scanner" className={navClass} onClick={() => setOpen(false)}>
+                  Scanner
+                </NavLink>
+              ) : null}
               <NavLink to="/dashboard" className={navClass} onClick={() => setOpen(false)}>
                 Dashboard
               </NavLink>

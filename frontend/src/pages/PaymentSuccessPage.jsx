@@ -12,6 +12,8 @@ const PaymentSuccessPage = () => {
   const [statusData, setStatusData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [downloadingTicket, setDownloadingTicket] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
 
   useEffect(() => {
     // Keep user on terminal payment state page (similar to gateway lock screens).
@@ -80,6 +82,28 @@ const PaymentSuccessPage = () => {
   const booking = statusData?.booking;
   const ticket = statusData?.ticket;
 
+  const handleDownloadTicket = async () => {
+    if (!ticket?.ticketCode || downloadingTicket) return;
+
+    try {
+      setDownloadingTicket(true);
+      setDownloadError("");
+      const { blob, filename } = await bookingApi.downloadTicket(ticket.ticketCode);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename || `${ticket.ticketCode}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setDownloadError(err.response?.data?.message || "Ticket download failed. Please try again.");
+    } finally {
+      setDownloadingTicket(false);
+    }
+  };
+
   return (
     <section className="mx-auto max-w-lg space-y-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
       <h1 className="text-2xl font-semibold text-emerald-100">Payment Successful</h1>
@@ -97,6 +121,15 @@ const PaymentSuccessPage = () => {
         <div className="rounded-xl border border-emerald-400/40 bg-emerald-700/20 p-3 text-sm text-emerald-100">
           <p>Ticket Code: {ticket.ticketCode}</p>
           <p>Status: {ticket.status}</p>
+          <button
+            type="button"
+            onClick={handleDownloadTicket}
+            disabled={downloadingTicket}
+            className="mt-3 rounded-lg border border-emerald-300/40 bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-50 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {downloadingTicket ? "Preparing PDF..." : "Download PDF Ticket"}
+          </button>
+          {downloadError ? <p className="mt-2 text-xs text-rose-200">{downloadError}</p> : null}
         </div>
       ) : null}
 

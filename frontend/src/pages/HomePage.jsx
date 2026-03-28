@@ -1,9 +1,9 @@
 import { useContext, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import useDebounce from "../hooks/useDebounce";
 import useMovies from "../hooks/useMovies";
-import MovieGrid from "../components/movie/MovieGrid";
-import RecommendationSection from "../components/movie/RecommendationSection";
+import HeroCarousel from "../components/movie/HeroCarousel";
+import MovieRow from "../components/movie/MovieRow";
 import Input from "../components/ui/Input";
 import Button from "../components/ui/Button";
 import { AppContext } from "../context/AppContext";
@@ -36,7 +36,7 @@ const HomePage = () => {
 
   const debounced = useDebounce(query, 350);
   const recommendationPayload = useMemo(() => ({ genre: inferGenreFromQuery(debounced) }), [debounced]);
-  const { filteredMovies, loading, error, recommendations, recLoading, selectedGenre, recommendationReason } = useMovies({
+  const { movies, filteredMovies, loading, error, recommendations, recLoading, recError } = useMovies({
     type: "trending",
     query: debounced,
     includeRecommendations: true,
@@ -54,7 +54,7 @@ const HomePage = () => {
       try {
         const intent = await bookingApi.getActiveBookingIntent();
         setActiveIntent(intent);
-      } catch (_err) {
+      } catch {
         setActiveIntent(null);
       }
     };
@@ -79,85 +79,103 @@ const HomePage = () => {
     navigate(`/search?q=${encodeURIComponent(safeQuery)}`);
   };
 
+  const visibleMovies = useMemo(() => {
+    if (filteredMovies.length) return filteredMovies;
+    return movies;
+  }, [filteredMovies, movies]);
+
+  const heroMovies = useMemo(() => visibleMovies.slice(0, 5), [visibleMovies]);
+  const trendingMovies = useMemo(() => visibleMovies.slice(0, 14), [visibleMovies]);
+
+  const topRatedMovies = useMemo(
+    () => [...visibleMovies].sort((a, b) => Number(b?.rating || 0) - Number(a?.rating || 0)).slice(0, 14),
+    [visibleMovies]
+  );
+
+  const recommendedMovies = useMemo(() => {
+    if (Array.isArray(recommendations) && recommendations.length) return recommendations.slice(0, 14);
+    return topRatedMovies;
+  }, [recommendations, topRatedMovies]);
+
   return (
     <div className="space-y-10">
-      <section className="grid gap-6 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-950 via-brand-900/40 to-slate-900 p-6 md:grid-cols-2 md:p-8">
-        <div className="space-y-4">
-          <p className="text-sm uppercase tracking-[0.25em] text-cyan-300">CinemaSync</p>
-          <h1 className="text-3xl font-semibold text-white md:text-4xl">Pick a movie. Lock seats. Pay once.</h1>
-          <p className="text-slate-300">Fast, clean booking flow with live availability and payment-safe recovery.</p>
+      <HeroCarousel movies={heroMovies} activeIntent={activeIntent} />
 
+      <section className="card-surface reveal-up reveal-delay-1 grid gap-5 p-5 md:grid-cols-[1.25fr_0.75fr] md:p-6">
+        <div className="space-y-3">
+          <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Discover Faster</p>
+          <h2 className="text-2xl font-semibold text-white">Find tonight&apos;s best show in seconds</h2>
           <form onSubmit={submitSearch} className="flex flex-col gap-3 sm:flex-row">
             <Input
-              placeholder="Search by title or genre..."
+              placeholder="Search by title, actor, or genre..."
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
-            <Button type="submit">Search</Button>
+            <Button type="submit" className="sm:min-w-[120px]">
+              Search
+            </Button>
           </form>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="secondary" onClick={() => navigate("/search?q=action")}>
-              Action Picks
+              Action
             </Button>
-            <Button type="button" variant="secondary" onClick={() => navigate("/search?q=romance")}>
-              Romance Picks
+            <Button type="button" variant="secondary" onClick={() => navigate("/search?q=thriller")}>
+              Thriller
             </Button>
             <Button type="button" variant="secondary" onClick={() => navigate("/search?q=family")}>
-              Family Picks
+              Family
             </Button>
           </div>
         </div>
 
-        <div className="card-surface flex flex-col justify-between p-6">
-          <div>
-            <h2 className="text-xl font-semibold text-white">Quick Start Booking</h2>
-            <p className="mt-2 text-sm text-slate-400">Ready in 5 taps from discovery to ticket.</p>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between text-sm text-slate-300">
-            <span>Saved Watchlist</span>
-            <span className="rounded-full bg-slate-800 px-2 py-1 text-xs">{watchlist.length} movies</span>
-          </div>
-
-          {activeIntent?.show?._id ? (
-            <button
-              type="button"
-              onClick={() => navigate(`/booking/${activeIntent.show._id}`)}
-              className="mt-4 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-left text-sm text-cyan-200 hover:bg-cyan-500/20"
-            >
-              Continue booking: {activeIntent.show.movie?.title || "selected movie"} ({activeIntent.seatIds?.length || 0} seats)
-            </button>
-          ) : null}
-
-          <Link to="/dashboard" className="mt-5 text-sm text-cyan-300 hover:text-cyan-200">
-            Go to dashboard
-          </Link>
+        <div className="rounded-2xl border border-slate-700 bg-slate-950/70 p-4">
+          <p className="text-xs uppercase tracking-[0.24em] text-cyan-300">Your Activity</p>
+          <p className="mt-2 text-sm text-slate-300">
+            Watchlist <span className="font-semibold text-white">{watchlist.length}</span> | Trending loaded{" "}
+            <span className="font-semibold text-white">{trendingMovies.length}</span>
+          </p>
+          <p className="mt-2 text-sm text-slate-400">Save movies to compare slots and checkout faster from your dashboard.</p>
+          <button
+            type="button"
+            onClick={() => navigate("/dashboard")}
+            className="mt-4 rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
+          >
+            Open Dashboard
+          </button>
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-white">Trending Movies</h2>
-        </div>
+      {error ? <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-300">{error}</p> : null}
+      {recError ? <p className="rounded-xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-200">{recError}</p> : null}
 
-        {error ? <p className="rounded-xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-300">{error}</p> : null}
-
-        <MovieGrid
-          movies={filteredMovies}
-          loading={loading}
-          emptyText="No trending movies matched your search."
-          watchlistIds={watchlistIds}
-          onToggleWatchlist={toggleWatchlist}
-        />
-      </section>
-
-      <RecommendationSection
-        movies={recommendations}
-        loading={recLoading}
-        selectedGenre={selectedGenre}
-        reason={recommendationReason}
+      <MovieRow
+        title="Trending Now"
+        subtitle="Most booked movies this week"
+        movies={loading ? [] : trendingMovies}
         watchlistIds={watchlistIds}
         onToggleWatchlist={toggleWatchlist}
+        tone="amber"
+        emptyText="No trending movies matched your filter."
+      />
+
+      <MovieRow
+        title="Top Rated"
+        subtitle="Highest audience score"
+        movies={loading ? [] : topRatedMovies}
+        watchlistIds={watchlistIds}
+        onToggleWatchlist={toggleWatchlist}
+        tone="cyan"
+        emptyText="Top rated picks are not available right now."
+      />
+
+      <MovieRow
+        title="Recommended For You"
+        subtitle={recLoading ? "Refreshing your personalized picks..." : "Based on your latest searches"}
+        movies={recLoading ? [] : recommendedMovies}
+        watchlistIds={watchlistIds}
+        onToggleWatchlist={toggleWatchlist}
+        tone="emerald"
+        emptyText="No personalized recommendations right now."
       />
     </div>
   );

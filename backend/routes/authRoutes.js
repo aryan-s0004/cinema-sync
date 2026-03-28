@@ -10,6 +10,7 @@ const {
   refreshAccessToken,
   getMe,
   logoutUser,
+  googleAuth,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
@@ -19,6 +20,7 @@ const {
   refreshValidator,
   otpVerifyValidator,
   otpResendValidator,
+  googleAuthValidator,
 } = require("../validators/authValidators");
 
 const router = express.Router();
@@ -30,6 +32,7 @@ router.get("/email-health", getEmailHealth);
 
 router.post("/register", validateRequest({ body: registerValidator }), registerUser);
 router.post("/login", validateRequest({ body: loginValidator }), loginUser);
+router.post("/google", validateRequest({ body: googleAuthValidator }), googleAuth);
 router.post("/login/verify-otp", validateRequest({ body: otpVerifyValidator }), verifyLoginOtp);
 router.post("/verify-account-otp", validateRequest({ body: otpVerifyValidator }), verifyAccountOtp);
 router.post("/otp/resend", validateRequest({ body: otpResendValidator }), resendOtp);

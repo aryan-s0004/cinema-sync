@@ -25,27 +25,47 @@ const generateSeatsForShow = async (showId, totalSeats) => {
   await Seat.insertMany(seats, { ordered: false });
 };
 
-const createDefaultShowsForMovie = async (movieId) => {
-  const base = new Date();
-  base.setMinutes(0, 0, 0);
-  const slots = [2, 5, 8];
+const DEFAULT_SHOW_TIMINGS = [
+  { hour: 9, minute: 0, screenName: "Screen 1", price: 180 },
+  { hour: 10, minute: 15, screenName: "Screen 2", price: 190 },
+  { hour: 12, minute: 30, screenName: "Screen 1", price: 210 },
+  { hour: 13, minute: 45, screenName: "Screen 3", price: 220 },
+  { hour: 16, minute: 0, screenName: "Screen 2", price: 240 },
+  { hour: 17, minute: 15, screenName: "Screen 1", price: 250 },
+  { hour: 19, minute: 30, screenName: "Screen 3", price: 280 },
+  { hour: 20, minute: 45, screenName: "Screen 2", price: 290 },
+  { hour: 22, minute: 30, screenName: "Screen 1", price: 310 },
+  { hour: 23, minute: 45, screenName: "Screen 3", price: 300 },
+];
 
-  for (let i = 0; i < slots.length; i += 1) {
-    const showTime = new Date(base.getTime() + slots[i] * 60 * 60 * 1000);
+const createDefaultShowsForMovie = async (movieId) => {
+  const now = new Date();
+  const theatreName = "CinemaSync Multiplex";
+
+  for (let i = 0; i < DEFAULT_SHOW_TIMINGS.length; i += 1) {
+    const slot = DEFAULT_SHOW_TIMINGS[i];
+    const showTime = new Date(now);
+    showTime.setHours(slot.hour, slot.minute, 0, 0);
+
+    // Always keep default slots upcoming to avoid creating already-expired options.
+    if (showTime <= now) {
+      showTime.setDate(showTime.getDate() + 1);
+    }
+
     const doc = await Show.findOneAndUpdate(
       {
         movie: movieId,
-        theatreName: "CinemaSync Multiplex",
-        screenName: `Screen ${i + 1}`,
+        theatreName,
+        screenName: slot.screenName,
         showTime,
       },
       {
         $setOnInsert: {
           movie: movieId,
-          theatreName: "CinemaSync Multiplex",
-          screenName: `Screen ${i + 1}`,
+          theatreName,
+          screenName: slot.screenName,
           showTime,
-          price: 220 + i * 30,
+          price: slot.price,
           totalSeats: 60,
           status: "active",
         },
@@ -74,6 +94,9 @@ const getAllShows = async (req, res, next) => {
       const end = new Date(date);
       end.setDate(end.getDate() + 1);
       filter.showTime = { $gte: start, $lt: end };
+    } else {
+      // Show only upcoming slots by default for cleaner booking UX.
+      filter.showTime = { $gte: new Date(Date.now() - 15 * 60 * 1000) };
     }
 
     let [shows, total] = await Promise.all([

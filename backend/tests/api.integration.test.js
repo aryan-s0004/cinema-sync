@@ -37,6 +37,21 @@ const registerUserAndGetToken = async () => {
   return response.body.data.accessToken;
 };
 
+const registerAdminAndGetToken = async () => {
+  const email = `admin_${Date.now()}_${Math.floor(Math.random() * 10000)}@example.com`;
+  const response = await request(app).post("/api/auth/register").send({
+    name: "Admin User",
+    email,
+    password: "password123",
+  });
+
+  assert.equal(response.status, 201);
+  const user = await User.findOne({ email });
+  user.role = "admin";
+  await user.save();
+  return response.body.data.accessToken;
+};
+
 before(async () => {
   await mongoose.connect(TEST_MONGO_URI);
 });
@@ -363,4 +378,82 @@ test("payment confirm is idempotent for same successful transaction", async () =
   assert.equal(confirmSecond.status, 200);
   assert.equal(confirmFirst.body.data.booking._id, confirmSecond.body.data.booking._id);
   assert.equal(confirmSecond.body.data.paymentStatus, "success");
+});
+
+test("admin scan endpoint validates and consumes ticket only once", async () => {
+  const userToken = await registerUserAndGetToken();
+  const adminToken = await registerAdminAndGetToken();
+  const userAuthHeader = { Authorization: `Bearer ${userToken}` };
+  const adminAuthHeader = { Authorization: `Bearer ${adminToken}` };
+
+  const movie = await Movie.create({
+    title: "Scan Flow Movie",
+    overview: "Scan flow movie",
+    language: "en",
+    duration: 120,
+    rating: 8.0,
+    popularity: 10,
+    isActive: true,
+  });
+
+  const show = await Show.create({
+    movie: movie._id,
+    theatreName: "CinemaSync Multiplex",
+    screenName: "Screen 2",
+    showTime: new Date(Date.now() + 20 * 60 * 1000),
+    price: 300,
+    totalSeats: 10,
+    status: "active",
+  });
+
+  const seats = await Seat.insertMany([{ show: show._id, row: "C", number: 1, type: "standard", status: "available" }]);
+  const seatIds = seats.map((seat) => String(seat._id));
+
+  await request(app).post("/api/seats/lock").set(userAuthHeader).send({ showId: String(show._id), seatIds });
+
+  const bookingRes = await request(app).post("/api/bookings").set(userAuthHeader).send({ showId: String(show._id), seatIds });
+  const bookingId = bookingRes.body.data._id;
+
+  const initiateRes = await request(app).post("/api/payments/initiate").set(userAuthHeader).send({ bookingId });
+
+  const confirmRes = await request(app).post("/api/payments/confirm").set(userAuthHeader).send({
+    transactionId: initiateRes.body.data.transactionId,
+    gatewayToken: initiateRes.body.data.gatewayToken,
+    gatewayTokenExpiresAt: initiateRes.body.data.gatewayTokenExpiresAt,
+    paymentId: "scan_test_payment_id",
+  });
+
+  assert.equal(confirmRes.status, 200);
+  const qrData = confirmRes.body.data.ticket.qrData;
+  assert.ok(qrData);
+
+  const unauthorizedScan = await request(app).post("/api/tickets/scan/validate").set(userAuthHeader).send({ qrData });
+  assert.equal(unauthorizedScan.status, 403);
+
+  const dryRunRes = await request(app)
+    .post("/api/tickets/scan/validate")
+    .set(adminAuthHeader)
+    .send({ qrData, consume: false, gate: "Gate A", deviceId: "scanner-01" });
+
+  assert.equal(dryRunRes.status, 200);
+  assert.equal(dryRunRes.body.data.valid, true);
+  assert.equal(dryRunRes.body.data.consumed, false);
+
+  const consumeRes = await request(app)
+    .post("/api/tickets/scan/validate")
+    .set(adminAuthHeader)
+    .send({ qrData, consume: true, gate: "Gate A", deviceId: "scanner-01" });
+
+  assert.equal(consumeRes.status, 200);
+  assert.equal(consumeRes.body.data.valid, true);
+  assert.equal(consumeRes.body.data.consumed, true);
+  assert.ok(consumeRes.body.data.scannedAt);
+
+  const duplicateScanRes = await request(app)
+    .post("/api/tickets/scan/validate")
+    .set(adminAuthHeader)
+    .send({ qrData, consume: true, gate: "Gate A", deviceId: "scanner-01" });
+
+  assert.equal(duplicateScanRes.status, 409);
+  assert.equal(duplicateScanRes.body.success, false);
 });

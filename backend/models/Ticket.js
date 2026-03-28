@@ -13,6 +13,16 @@ const ticketSchema = new mongoose.Schema(
     amount: { type: Number, required: true },
     status: { type: String, enum: ["active", "cancelled"], default: "active" },
     qrData: { type: String, required: true },
+    scan: {
+      used: { type: Boolean, default: false },
+      usedAt: { type: Date, default: null },
+      usedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+      scanCount: { type: Number, default: 0 },
+      lastScannedAt: { type: Date, default: null },
+      lastScanResult: { type: String, default: null },
+      gate: { type: String, default: null },
+      deviceId: { type: String, default: null },
+    },
     filePath: { type: String, default: null },
     issuedAt: { type: Date, default: Date.now },
   },
@@ -21,5 +31,6 @@ const ticketSchema = new mongoose.Schema(
 
 ticketSchema.index({ user: 1, createdAt: -1 });
 ticketSchema.index({ booking: 1, user: 1 });
+ticketSchema.index({ ticketCode: 1, "scan.used": 1 });
 
 module.exports = mongoose.model("Ticket", ticketSchema);

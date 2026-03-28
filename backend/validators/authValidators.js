@@ -81,10 +81,20 @@ const otpResendValidator = (body) => {
   return { value: { email: normalizedEmail, purpose } };
 };
 
+const googleAuthValidator = (body) => {
+  const token = String(body?.token || "").trim();
+  if (!token) {
+    return { error: "token is required" };
+  }
+
+  return { value: { token } };
+};
+
 module.exports = {
   registerValidator,
   loginValidator,
   refreshValidator,
   otpVerifyValidator,
   otpResendValidator,
+  googleAuthValidator,
 };
