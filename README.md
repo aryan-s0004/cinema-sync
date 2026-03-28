@@ -14,6 +14,7 @@ CinemaSync is a full-stack MERN movie discovery and seat-booking platform with T
 - Movies and showtime APIs
 - Seat locking with expiry
 - Booking and payment confirmation flow
+- Signature-verified mock webhook for payment confirmation
 - Ticket generation + ticket retrieval APIs
 - Admin scan API with one-time ticket consumption (anti-reuse)
 - Request validation + sanitization + rate limiting
@@ -102,4 +103,4 @@ Payload:
 - Keep secrets only in `.env` / secret manager
 - Use a managed MongoDB instance in production
 - Replace in-memory cache and rate limiter with Redis for horizontal scaling
-- Add real payment gateway verification for production payments
+- Keep payment confirmation provider-authoritative (webhook signature verification)

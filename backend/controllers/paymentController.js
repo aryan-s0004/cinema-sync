@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const Booking = require("../models/Booking");
 const Seat = require("../models/Seat");
+const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { createOrUpdateTicketForBooking } = require("../services/ticketService");
@@ -21,6 +22,9 @@ const legacyToState = {
 const PAYMENT_SECRET = () =>
   process.env.PAYMENT_MOCK_SECRET || process.env.JWT_ACCESS_SECRET || "cinemasync_mock_secret";
 
+const WEBHOOK_SECRET = () =>
+  process.env.PAYMENT_WEBHOOK_SECRET || process.env.PAYMENT_MOCK_SECRET || process.env.JWT_ACCESS_SECRET || "cinemasync_mock_secret";
+
 const PAYMENT_WINDOW_MINUTES = Math.max(Number(process.env.PAYMENT_WINDOW_MINUTES || 10), 5);
 const PAYMENT_OTP_EXPIRY_MINUTES = Math.max(Number(process.env.PAYMENT_OTP_EXPIRY_MINUTES || 3), 2);
 const isDevLike = process.env.NODE_ENV !== "production";
@@ -39,6 +43,11 @@ const signGatewayToken = ({ bookingId, transactionId, orderId, expiresAt }) => {
 const signPayment = ({ transactionId, orderId, paymentId }) => {
   const payload = `${transactionId}|${orderId}|${paymentId}`;
   return crypto.createHmac("sha256", PAYMENT_SECRET()).update(payload).digest("hex");
+};
+
+const signWebhookEvent = ({ orderId, paymentId, status }) => {
+  const payload = `${orderId}|${paymentId}|${status}`;
+  return crypto.createHmac("sha256", WEBHOOK_SECRET()).update(payload).digest("hex");
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, Math.max(ms, 0)));
@@ -341,6 +350,139 @@ const finalizeSuccess = async ({ booking, paymentId, userDoc }) => {
   };
 };
 
+const safeEqualHex = (left, right) => {
+  const a = Buffer.from(String(left || ""), "hex");
+  const b = Buffer.from(String(right || ""), "hex");
+  if (a.length !== b.length || a.length === 0) return false;
+  return crypto.timingSafeEqual(a, b);
+};
+
+const handlePaymentWebhook = async (req, res, next) => {
+  try {
+    const { orderId, paymentId, status, signature } = req.body;
+    const normalizedStatus = String(status || "").toLowerCase();
+
+    const expectedSignature = signWebhookEvent({ orderId, paymentId, status: normalizedStatus });
+    if (!safeEqualHex(signature, expectedSignature)) {
+      throw new ApiError(403, "Invalid payment webhook signature");
+    }
+
+    const booking = await Booking.findOne({ "payment.orderId": orderId });
+    if (!booking) {
+      throw new ApiError(404, "Booking not found for orderId");
+    }
+
+    if (normalizedStatus === "success") {
+      if (booking.status === "confirmed" && isSuccessState(booking.payment?.status)) {
+        const existingTicket = await createOrUpdateTicketForBooking(
+          await booking.populate([{ path: "show", populate: [{ path: "movie" }] }, { path: "seats" }]),
+          await User.findById(booking.user)
+        );
+        return res.json(
+          new ApiResponse(
+            200,
+            {
+              bookingId: String(booking._id),
+              bookingStatus: booking.status,
+              paymentStatus: normalizePaymentState(booking.payment?.status),
+              ticketCode: existingTicket.ticketCode,
+              idempotent: true,
+            },
+            "Webhook already processed"
+          )
+        );
+      }
+
+      if (["cancelled", "expired"].includes(booking.status)) {
+        throw new ApiError(409, `Booking is ${booking.status}. Success webhook ignored.`);
+      }
+
+      if (!booking.payment?.transactionId) {
+        booking.payment = {
+          ...(booking.payment || {}),
+          transactionId: randomId(`txn_${booking._id.toString().slice(-6)}`),
+          initiatedAt: booking.payment?.initiatedAt || new Date(),
+        };
+      }
+
+      const userDoc = await User.findById(booking.user);
+      if (!userDoc) {
+        throw new ApiError(404, "Booking user not found");
+      }
+
+      const { ticket } = await finalizeSuccess({ booking, paymentId, userDoc });
+
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            bookingId: String(booking._id),
+            bookingStatus: booking.status,
+            paymentStatus: normalizePaymentState(booking.payment?.status),
+            transactionId: booking.payment?.transactionId || null,
+            orderId: booking.payment?.orderId || orderId,
+            paymentId: booking.payment?.paymentId || paymentId,
+            ticketCode: ticket.ticketCode,
+          },
+          "Webhook processed: payment confirmed"
+        )
+      );
+    }
+
+    if (normalizedStatus === "failed") {
+      if (booking.status === "confirmed" && isSuccessState(booking.payment?.status)) {
+        return res.json(
+          new ApiResponse(
+            200,
+            {
+              bookingId: String(booking._id),
+              bookingStatus: booking.status,
+              paymentStatus: normalizePaymentState(booking.payment?.status),
+              ignored: true,
+            },
+            "Webhook ignored: booking already confirmed"
+          )
+        );
+      }
+
+      booking.status = "expired";
+      booking.payment = {
+        ...(booking.payment || {}),
+        paymentId: booking.payment?.paymentId || paymentId || null,
+        status: PAYMENT_STATE.FAILED,
+        failureReason: "Provider reported payment failure",
+        failedAt: new Date(),
+        locked: false,
+        otpHash: null,
+        otpExpiresAt: null,
+        otpAttempts: 0,
+      };
+      await booking.save();
+
+      await Seat.updateMany(
+        { _id: { $in: booking.seats }, show: booking.show, status: "booked" },
+        { $set: { status: "available", lockedBy: null, lockedUntil: null } }
+      );
+
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            bookingId: String(booking._id),
+            bookingStatus: booking.status,
+            paymentStatus: normalizePaymentState(booking.payment?.status),
+          },
+          "Webhook processed: payment failed"
+        )
+      );
+    }
+
+    throw new ApiError(400, "Unsupported webhook status");
+  } catch (error) {
+    next(error);
+  }
+};
+
 const initiatePayment = async (req, res, next) => {
   try {
     const { bookingId } = req.body;
@@ -613,6 +755,7 @@ module.exports = {
   requestPaymentOtp,
   confirmPayment,
   getPaymentStatus,
+  handlePaymentWebhook,
   createPaymentOrder,
   verifyPayment,
 };

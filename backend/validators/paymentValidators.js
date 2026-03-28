@@ -170,6 +170,34 @@ const paymentStatusParamValidator = (params) => {
   return { value: { transactionId: params.transactionId.trim() } };
 };
 
+const paymentWebhookValidator = (body) => {
+  if (!isNonEmptyString(body.orderId)) {
+    return { error: "orderId is required" };
+  }
+
+  if (!isNonEmptyString(body.paymentId)) {
+    return { error: "paymentId is required" };
+  }
+
+  const status = String(body.status || "").toLowerCase().trim();
+  if (!["success", "failed"].includes(status)) {
+    return { error: "status must be success or failed" };
+  }
+
+  if (!isNonEmptyString(body.signature)) {
+    return { error: "signature is required" };
+  }
+
+  return {
+    value: {
+      orderId: body.orderId.trim(),
+      paymentId: body.paymentId.trim(),
+      status,
+      signature: body.signature.trim(),
+    },
+  };
+};
+
 module.exports = {
   createOrderValidator,
   verifyPaymentValidator,
@@ -177,4 +205,5 @@ module.exports = {
   paymentOtpRequestValidator,
   confirmPaymentValidator,
   paymentStatusParamValidator,
+  paymentWebhookValidator,
 };

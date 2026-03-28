@@ -33,8 +33,11 @@ Base URL: `http://localhost:5000/api`
 - `GET /bookings/my?page=1&limit=20` (Bearer)
 - `GET /bookings/:id` (Bearer)
 - `PATCH /bookings/:id/cancel` (Bearer)
-- `POST /payments/create-order` (Bearer)
-- `POST /payments/verify` (Bearer)
+- `POST /payments/initiate` (Bearer)
+- `POST /payments/request-otp` (Bearer)
+- `POST /payments/confirm` (Bearer)
+- `GET /payments/status/:transactionId` (Bearer)
+- `POST /payments/webhook/mock` (Signature verified; provider callback)
 
 ## Recommendation
 - `POST /recommend`
@@ -43,6 +46,7 @@ Base URL: `http://localhost:5000/api`
 - `GET /tickets/my?page=1&limit=20` (Bearer)
 - `GET /tickets/booking/:bookingId` (Bearer)
 - `GET /tickets/download/:ticketCode` (Bearer)
+- `POST /tickets/scan/validate` (Bearer Admin)
 
 ## Response Pattern
 

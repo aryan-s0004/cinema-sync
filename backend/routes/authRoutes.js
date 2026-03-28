@@ -12,7 +12,7 @@ const {
   logoutUser,
   googleAuth,
 } = require("../controllers/authController");
-const { protect } = require("../middleware/authMiddleware");
+const { protect, adminOnly } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
 const {
   registerValidator,
@@ -25,10 +25,10 @@ const {
 
 const router = express.Router();
 
-router.get("/test", (_req, res) => {
+router.get("/test", protect, adminOnly, (_req, res) => {
   res.json({ success: true, message: "Auth route is working" });
 });
-router.get("/email-health", getEmailHealth);
+router.get("/email-health", protect, adminOnly, getEmailHealth);
 
 router.post("/register", validateRequest({ body: registerValidator }), registerUser);
 router.post("/login", validateRequest({ body: loginValidator }), loginUser);

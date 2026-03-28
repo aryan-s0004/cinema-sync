@@ -10,6 +10,7 @@ process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || "test_refresh
 process.env.JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || "15m";
 process.env.JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || "7d";
 process.env.PAYMENT_PROVIDER = process.env.PAYMENT_PROVIDER || "mock";
+process.env.PAYMENT_WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET || "test_webhook_secret";
 process.env.SEAT_LOCK_MINUTES = process.env.SEAT_LOCK_MINUTES || "10";
 
 const TEST_MONGO_URI = process.env.MONGO_URI_TEST || "mongodb://127.0.0.1:27017/cinemasync_test";
@@ -378,6 +379,74 @@ test("payment confirm is idempotent for same successful transaction", async () =
   assert.equal(confirmSecond.status, 200);
   assert.equal(confirmFirst.body.data.booking._id, confirmSecond.body.data.booking._id);
   assert.equal(confirmSecond.body.data.paymentStatus, "success");
+});
+
+test("mock payment webhook confirms booking with valid signature", async () => {
+  const token = await registerUserAndGetToken();
+  const authHeader = { Authorization: `Bearer ${token}` };
+
+  const movie = await Movie.create({
+    title: "Webhook Flow Movie",
+    overview: "Webhook flow movie",
+    language: "en",
+    duration: 120,
+    rating: 8.1,
+    popularity: 10,
+    isActive: true,
+  });
+
+  const show = await Show.create({
+    movie: movie._id,
+    theatreName: "CinemaSync Multiplex",
+    screenName: "Screen 4",
+    showTime: new Date(Date.now() + 60 * 60 * 1000),
+    price: 280,
+    totalSeats: 10,
+    status: "active",
+  });
+
+  const seats = await Seat.insertMany([{ show: show._id, row: "D", number: 1, type: "standard", status: "available" }]);
+  const seatIds = seats.map((seat) => String(seat._id));
+
+  await request(app).post("/api/seats/lock").set(authHeader).send({ showId: String(show._id), seatIds });
+
+  const bookingRes = await request(app).post("/api/bookings").set(authHeader).send({ showId: String(show._id), seatIds });
+  const bookingId = bookingRes.body.data._id;
+
+  const initiateRes = await request(app).post("/api/payments/initiate").set(authHeader).send({ bookingId });
+  const orderId = initiateRes.body.data.orderId;
+  const paymentId = `pay_${Date.now()}`;
+
+  const invalidWebhookRes = await request(app).post("/api/payments/webhook/mock").send({
+    orderId,
+    paymentId,
+    status: "success",
+    signature: "bad_signature",
+  });
+
+  assert.equal(invalidWebhookRes.status, 403);
+
+  const signature = crypto
+    .createHmac("sha256", process.env.PAYMENT_WEBHOOK_SECRET)
+    .update(`${orderId}|${paymentId}|success`)
+    .digest("hex");
+
+  const webhookRes = await request(app).post("/api/payments/webhook/mock").send({
+    orderId,
+    paymentId,
+    status: "success",
+    signature,
+  });
+
+  assert.equal(webhookRes.status, 200);
+  assert.equal(webhookRes.body.success, true);
+  assert.equal(webhookRes.body.data.bookingStatus, "confirmed");
+  assert.ok(webhookRes.body.data.ticketCode);
+
+  const statusRes = await request(app).get(`/api/payments/status/${initiateRes.body.data.transactionId}`).set(authHeader);
+  assert.equal(statusRes.status, 200);
+  assert.equal(statusRes.body.data.booking.status, "confirmed");
+  assert.equal(statusRes.body.data.paymentStatus, "success");
 });
 
 test("admin scan endpoint validates and consumes ticket only once", async () => {
