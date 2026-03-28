@@ -45,8 +45,8 @@ const signPayment = ({ transactionId, orderId, paymentId }) => {
   return crypto.createHmac("sha256", PAYMENT_SECRET()).update(payload).digest("hex");
 };
 
-const signWebhookEvent = ({ orderId, paymentId, status }) => {
-  const payload = `${orderId}|${paymentId}|${status}`;
+const signWebhookEvent = ({ orderId, paymentId, status, eventId }) => {
+  const payload = `${orderId}|${paymentId}|${status}|${eventId}`;
   return crypto.createHmac("sha256", WEBHOOK_SECRET()).update(payload).digest("hex");
 };
 
@@ -357,12 +357,23 @@ const safeEqualHex = (left, right) => {
   return crypto.timingSafeEqual(a, b);
 };
 
+const trackWebhookEvent = (booking, eventId) => {
+  const payment = booking.payment || {};
+  const seen = new Set(Array.isArray(payment.webhookEventIds) ? payment.webhookEventIds : []);
+  seen.add(String(eventId));
+  booking.payment = {
+    ...payment,
+    webhookEventIds: [...seen].slice(-25),
+    webhookReceivedAt: new Date(),
+  };
+};
+
 const handlePaymentWebhook = async (req, res, next) => {
   try {
-    const { orderId, paymentId, status, signature } = req.body;
+    const { orderId, paymentId, status, signature, eventId } = req.body;
     const normalizedStatus = String(status || "").toLowerCase();
 
-    const expectedSignature = signWebhookEvent({ orderId, paymentId, status: normalizedStatus });
+    const expectedSignature = signWebhookEvent({ orderId, paymentId, status: normalizedStatus, eventId });
     if (!safeEqualHex(signature, expectedSignature)) {
       throw new ApiError(403, "Invalid payment webhook signature");
     }
@@ -372,8 +383,28 @@ const handlePaymentWebhook = async (req, res, next) => {
       throw new ApiError(404, "Booking not found for orderId");
     }
 
+    if ((booking.payment?.webhookEventIds || []).includes(String(eventId))) {
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            bookingId: String(booking._id),
+            bookingStatus: booking.status,
+            paymentStatus: normalizePaymentState(booking.payment?.status),
+            idempotent: true,
+            duplicateEvent: true,
+            eventId,
+          },
+          "Webhook already processed for this eventId"
+        )
+      );
+    }
+
     if (normalizedStatus === "success") {
       if (booking.status === "confirmed" && isSuccessState(booking.payment?.status)) {
+        trackWebhookEvent(booking, eventId);
+        await booking.save();
+
         const existingTicket = await createOrUpdateTicketForBooking(
           await booking.populate([{ path: "show", populate: [{ path: "movie" }] }, { path: "seats" }]),
           await User.findById(booking.user)
@@ -387,6 +418,7 @@ const handlePaymentWebhook = async (req, res, next) => {
               paymentStatus: normalizePaymentState(booking.payment?.status),
               ticketCode: existingTicket.ticketCode,
               idempotent: true,
+              eventId,
             },
             "Webhook already processed"
           )
@@ -411,6 +443,8 @@ const handlePaymentWebhook = async (req, res, next) => {
       }
 
       const { ticket } = await finalizeSuccess({ booking, paymentId, userDoc });
+      trackWebhookEvent(booking, eventId);
+      await booking.save();
 
       return res.json(
         new ApiResponse(
@@ -423,6 +457,7 @@ const handlePaymentWebhook = async (req, res, next) => {
             orderId: booking.payment?.orderId || orderId,
             paymentId: booking.payment?.paymentId || paymentId,
             ticketCode: ticket.ticketCode,
+            eventId,
           },
           "Webhook processed: payment confirmed"
         )
@@ -431,6 +466,9 @@ const handlePaymentWebhook = async (req, res, next) => {
 
     if (normalizedStatus === "failed") {
       if (booking.status === "confirmed" && isSuccessState(booking.payment?.status)) {
+        trackWebhookEvent(booking, eventId);
+        await booking.save();
+
         return res.json(
           new ApiResponse(
             200,
@@ -439,6 +477,7 @@ const handlePaymentWebhook = async (req, res, next) => {
               bookingStatus: booking.status,
               paymentStatus: normalizePaymentState(booking.payment?.status),
               ignored: true,
+              eventId,
             },
             "Webhook ignored: booking already confirmed"
           )
@@ -457,6 +496,7 @@ const handlePaymentWebhook = async (req, res, next) => {
         otpExpiresAt: null,
         otpAttempts: 0,
       };
+      trackWebhookEvent(booking, eventId);
       await booking.save();
 
       await Seat.updateMany(
@@ -471,6 +511,7 @@ const handlePaymentWebhook = async (req, res, next) => {
             bookingId: String(booking._id),
             bookingStatus: booking.status,
             paymentStatus: normalizePaymentState(booking.payment?.status),
+            eventId,
           },
           "Webhook processed: payment failed"
         )

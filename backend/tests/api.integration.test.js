@@ -416,19 +416,21 @@ test("mock payment webhook confirms booking with valid signature", async () => {
   const initiateRes = await request(app).post("/api/payments/initiate").set(authHeader).send({ bookingId });
   const orderId = initiateRes.body.data.orderId;
   const paymentId = `pay_${Date.now()}`;
+  const eventId = `evt_${Date.now()}`;
 
   const invalidWebhookRes = await request(app).post("/api/payments/webhook/mock").send({
     orderId,
     paymentId,
     status: "success",
     signature: "bad_signature",
+    eventId,
   });
 
   assert.equal(invalidWebhookRes.status, 403);
 
   const signature = crypto
     .createHmac("sha256", process.env.PAYMENT_WEBHOOK_SECRET)
-    .update(`${orderId}|${paymentId}|success`)
+    .update(`${orderId}|${paymentId}|success|${eventId}`)
     .digest("hex");
 
   const webhookRes = await request(app).post("/api/payments/webhook/mock").send({
@@ -436,12 +438,25 @@ test("mock payment webhook confirms booking with valid signature", async () => {
     paymentId,
     status: "success",
     signature,
+    eventId,
   });
 
   assert.equal(webhookRes.status, 200);
   assert.equal(webhookRes.body.success, true);
   assert.equal(webhookRes.body.data.bookingStatus, "confirmed");
   assert.ok(webhookRes.body.data.ticketCode);
+
+  const duplicateWebhookRes = await request(app).post("/api/payments/webhook/mock").send({
+    orderId,
+    paymentId,
+    status: "success",
+    signature,
+    eventId,
+  });
+
+  assert.equal(duplicateWebhookRes.status, 200);
+  assert.equal(duplicateWebhookRes.body.data.idempotent, true);
+  assert.equal(duplicateWebhookRes.body.data.duplicateEvent, true);
 
   const statusRes = await request(app).get(`/api/payments/status/${initiateRes.body.data.transactionId}`).set(authHeader);
   assert.equal(statusRes.status, 200);

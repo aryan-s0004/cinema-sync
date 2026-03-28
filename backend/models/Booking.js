@@ -37,6 +37,8 @@ const bookingSchema = new mongoose.Schema(
       failedAt: { type: Date, default: null },
       attempts: { type: Number, default: 0 },
       failureReason: { type: String, default: null },
+      webhookEventIds: [{ type: String }],
+      webhookReceivedAt: { type: Date, default: null },
     },
   },
   { timestamps: true }

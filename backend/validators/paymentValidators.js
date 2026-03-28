@@ -188,12 +188,17 @@ const paymentWebhookValidator = (body) => {
     return { error: "signature is required" };
   }
 
+  if (!isNonEmptyString(body.eventId)) {
+    return { error: "eventId is required" };
+  }
+
   return {
     value: {
       orderId: body.orderId.trim(),
       paymentId: body.paymentId.trim(),
       status,
       signature: body.signature.trim(),
+      eventId: body.eventId.trim(),
     },
   };
 };
