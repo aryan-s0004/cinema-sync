@@ -14,13 +14,19 @@ const {
   buildBookingConfirmationTemplate,
 } = require("./emailTemplates");
 
+const resolveEmailUser = () =>
+  (process.env.EMAIL_USER || process.env.EMAIL || "").trim();
+
+const resolveEmailPass = () =>
+  (process.env.EMAIL_PASS || process.env.APP_PASSWORD || "").trim();
+
 const hasSmtpCredentials = () =>
-  Boolean((process.env.EMAIL_USER || "").trim() && (process.env.EMAIL_PASS || "").trim());
+  Boolean(resolveEmailUser() && resolveEmailPass());
 
 const createTransporter = () => {
   if (!nodemailer) return null;
-  const smtpUser = process.env.EMAIL_USER ? process.env.EMAIL_USER.trim() : "";
-  const smtpPass = process.env.EMAIL_PASS ? process.env.EMAIL_PASS.trim() : "";
+  const smtpUser = resolveEmailUser();
+  const smtpPass = resolveEmailPass();
 
   const smtpHost = process.env.SMTP_HOST;
   if (smtpHost) {
@@ -61,7 +67,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
 
   if (transporter) {
     await transporter.sendMail({
-      from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+      from: process.env.EMAIL_FROM || resolveEmailUser(),
       to,
       subject,
       text,
