@@ -171,6 +171,72 @@ test("POST /api/auth/login supports phone OTP channel", async () => {
   assert.ok(verifyRes.body.data.refreshToken);
 });
 
+test("POST /api/auth/login/otp/request sends passwordless login OTP", async () => {
+  await request(app).post("/api/auth/register").send({
+    name: "Otp Request User",
+    email: "otp_request_user@example.com",
+    phone: "+919999999999",
+    password: "password123",
+  });
+
+  const response = await request(app).post("/api/auth/login/otp/request").send({
+    email: "otp_request_user@example.com",
+    channel: "phone",
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.data.otpRequired, true);
+  assert.equal(response.body.data.channel, "phone");
+  assert.equal(typeof response.body.data.expiresAt, "string");
+});
+
+test("password reset flow updates credentials using OTP", async () => {
+  await request(app).post("/api/auth/register").send({
+    name: "Reset User",
+    email: "reset_user@example.com",
+    password: "oldpass123",
+  });
+
+  const forgotRes = await request(app).post("/api/auth/password/forgot").send({
+    email: "reset_user@example.com",
+  });
+
+  assert.equal(forgotRes.status, 200);
+  assert.equal(forgotRes.body.success, true);
+  assert.equal(forgotRes.body.data.requested, true);
+
+  const user = await User.findOne({ email: "reset_user@example.com" });
+  user.otp.hash = crypto.createHash("sha256").update("111111").digest("hex");
+  user.otp.purpose = "password_reset";
+  user.otp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  user.otp.attempts = 0;
+  await user.save();
+
+  const resetRes = await request(app).post("/api/auth/password/reset").send({
+    email: "reset_user@example.com",
+    otp: "111111",
+    newPassword: "newpass123",
+  });
+
+  assert.equal(resetRes.status, 200);
+  assert.equal(resetRes.body.success, true);
+  assert.equal(resetRes.body.data.reset, true);
+
+  const oldPasswordLoginRes = await request(app).post("/api/auth/login").send({
+    email: "reset_user@example.com",
+    password: "oldpass123",
+  });
+  assert.equal(oldPasswordLoginRes.status, 401);
+
+  const newPasswordLoginRes = await request(app).post("/api/auth/login").send({
+    email: "reset_user@example.com",
+    password: "newpass123",
+  });
+  assert.equal(newPasswordLoginRes.status, 200);
+  assert.equal(newPasswordLoginRes.body.data.otpRequired, true);
+});
+
 test("GET /api/bookings/my returns 401 without token", async () => {
   const response = await request(app).get("/api/bookings/my");
 
