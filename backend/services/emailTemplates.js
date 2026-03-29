@@ -16,7 +16,13 @@ const baseLayout = ({ title, subtitle, content }) => `
 `;
 
 const buildOtpTemplate = ({ name, otp, purpose, expiresInMinutes }) => {
-  const purposeText = purpose === "login" ? "Login verification" : "Email verification";
+  const purposeMap = {
+    login: "Login verification",
+    login_phone: "Login verification",
+    email_verification: "Email verification",
+    password_reset: "Password reset",
+  };
+  const purposeText = purposeMap[purpose] || "Verification";
   return {
     subject: `CinemaSync ${purposeText} OTP`,
     text: `Hi ${name}, your OTP is ${otp}. It expires in ${expiresInMinutes} minutes.`,
