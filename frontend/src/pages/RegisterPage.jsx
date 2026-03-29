@@ -8,7 +8,7 @@ const RegisterPage = () => {
   const navigate = useNavigate();
   const { register, verifyAccountOtp, resendOtp } = useAuth();
 
-  const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", phone: "" });
   const [otp, setOtp] = useState("");
   const [otpStage, setOtpStage] = useState(false);
   const [otpExpiresAt, setOtpExpiresAt] = useState(null);
@@ -106,6 +106,7 @@ const RegisterPage = () => {
         <form className="space-y-4" onSubmit={handleSubmit}>
           <Input label="Name" value={form.name} onChange={handleChange("name")} placeholder="Your name" />
           <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
+          <Input label="Phone (optional)" value={form.phone} onChange={handleChange("phone")} placeholder="+919876543210" />
           <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Minimum 6 characters" />
 
           {error ? <p className="text-sm text-rose-400">{error}</p> : null}

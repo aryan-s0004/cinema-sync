@@ -65,6 +65,27 @@ npm run dev
 The app login page supports both:
 - Email/password + OTP flow
 - Google Sign-In flow
+- Phone OTP flow (when user has a linked phone number)
+
+## Phone OTP Setup (Real SMS)
+
+Use either Twilio or Fast2SMS in `backend/.env`:
+
+Twilio:
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_PHONE_NUMBER`
+
+Fast2SMS:
+- `FAST2SMS_API_KEY`
+- `FAST2SMS_SENDER_ID`
+
+Fallback:
+- `SMS_FALLBACK_TO_LOG=true` keeps dev/test usable without paid SMS credentials.
+
+Login behavior:
+- Choose `OTP via Email` or `OTP via Phone` on login page.
+- Phone OTP requires user to have a phone saved during registration.
 
 ## Ticket Scan Security (Admin)
 
@@ -113,3 +134,4 @@ Payload:
 - Auth diagnostics routes are admin-protected:
   - `/api/auth/test`
   - `/api/auth/email-health`
+  - `/api/auth/sms-health`

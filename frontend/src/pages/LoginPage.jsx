@@ -28,6 +28,8 @@ const LoginPage = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+  const [loginChannel, setLoginChannel] = useState("email");
+  const [otpChannel, setOtpChannel] = useState("email");
   const [googleReady, setGoogleReady] = useState(false);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const googleButtonRef = useRef(null);
@@ -55,9 +57,10 @@ const LoginPage = () => {
         localStorage.removeItem("rememberedLoginEmail");
       }
 
-      const loginResult = await login(form);
+      const loginResult = await login({ ...form, channel: loginChannel });
       if (loginResult?.otpRequired) {
         setOtpStage(true);
+        setOtpChannel(loginResult.channel || loginChannel);
         setOtpExpiresAt(loginResult.expiresAt);
         setDeliveryMode(loginResult.deliveryMode || "");
         setOtpHint(loginResult.otpPreview ? `Dev OTP: ${loginResult.otpPreview}` : "");
@@ -83,7 +86,7 @@ const LoginPage = () => {
 
     try {
       setLoading(true);
-      await verifyLoginOtp({ email: form.email, otp });
+      await verifyLoginOtp({ email: form.email, otp, channel: otpChannel });
       navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || "OTP verification failed");
@@ -95,7 +98,11 @@ const LoginPage = () => {
   const handleResendOtp = async () => {
     try {
       setLoading(true);
-      const data = await resendOtp({ email: form.email, purpose: "login" });
+      const data = await resendOtp({
+        email: form.email,
+        purpose: otpChannel === "phone" ? "login_phone" : "login",
+        channel: otpChannel,
+      });
       setOtpExpiresAt(data.expiresAt);
       setDeliveryMode(data.deliveryMode || "");
       setOtpHint(data.otpPreview ? `Dev OTP: ${data.otpPreview}` : "");
@@ -239,6 +246,22 @@ const LoginPage = () => {
           <form className="space-y-4" onSubmit={handleSubmit}>
             <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
             <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Enter password" />
+            <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-700 bg-slate-950/50 p-1.5 text-xs">
+              <button
+                type="button"
+                className={`rounded-lg px-2 py-2 transition ${loginChannel === "email" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+                onClick={() => setLoginChannel("email")}
+              >
+                OTP via Email
+              </button>
+              <button
+                type="button"
+                className={`rounded-lg px-2 py-2 transition ${loginChannel === "phone" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+                onClick={() => setLoginChannel("phone")}
+              >
+                OTP via Phone
+              </button>
+            </div>
             <div className="flex items-center justify-between text-xs">
               <label className="inline-flex items-center gap-2 text-slate-400">
                 <input
@@ -264,10 +287,12 @@ const LoginPage = () => {
           </form>
         ) : (
           <form className="space-y-4" onSubmit={handleVerifyOtp}>
-            <p className="text-sm text-slate-300">Enter the OTP sent to {form.email}</p>
-            {deliveryMode && deliveryMode !== "smtp" ? (
+            <p className="text-sm text-slate-300">
+              Enter the OTP sent to {otpChannel === "phone" ? "your registered phone number" : form.email}
+            </p>
+            {deliveryMode && !["smtp", "twilio", "fast2sms"].includes(deliveryMode) ? (
               <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">
-                Email delivery mode: {deliveryMode}. Configure SMTP for real inbox delivery.
+                {otpChannel === "phone" ? "SMS" : "Email"} delivery mode: {deliveryMode}.
               </p>
             ) : null}
             <Input
