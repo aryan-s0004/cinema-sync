@@ -5,6 +5,7 @@ const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+    phone: { type: String, unique: true, sparse: true, trim: true },
     password: {
       type: String,
       minlength: 6,
@@ -18,9 +19,17 @@ const userSchema = new mongoose.Schema(
     role: { type: String, enum: ["user", "admin"], default: "user" },
     refreshToken: { type: String, default: null },
     emailVerified: { type: Boolean, default: false },
+    phoneVerified: { type: Boolean, default: false },
     otp: {
       hash: { type: String, default: null },
       purpose: { type: String, enum: ["email_verification", "login"], default: null },
+      expiresAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
+      lastSentAt: { type: Date, default: null },
+    },
+    phoneOtp: {
+      hash: { type: String, default: null },
+      purpose: { type: String, enum: ["login_phone"], default: null },
       expiresAt: { type: Date, default: null },
       attempts: { type: Number, default: 0 },
       lastSentAt: { type: Date, default: null },

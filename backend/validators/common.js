@@ -26,6 +26,7 @@ const validateObjectId = (field, value) => {
 };
 
 const normalizeEmail = (email) => String(email || "").trim().toLowerCase();
+const normalizePhone = (phone) => String(phone || "").replace(/[^\d+]/g, "").trim();
 
 const safeDate = (value) => {
   const parsed = new Date(value);
@@ -49,6 +50,7 @@ module.exports = {
   isValidObjectId,
   validateObjectId,
   normalizeEmail,
+  normalizePhone,
   safeDate,
   parseBoolean,
 };

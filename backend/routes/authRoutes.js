@@ -6,6 +6,7 @@ const {
   verifyAccountOtp,
   resendOtp,
   getEmailHealth,
+  getSmsHealth,
   sendEmailTest,
   refreshAccessToken,
   getMe,
@@ -29,6 +30,7 @@ router.get("/test", protect, adminOnly, (_req, res) => {
   res.json({ success: true, message: "Auth route is working" });
 });
 router.get("/email-health", protect, adminOnly, getEmailHealth);
+router.get("/sms-health", protect, adminOnly, getSmsHealth);
 
 router.post("/register", validateRequest({ body: registerValidator }), registerUser);
 router.post("/login", validateRequest({ body: loginValidator }), loginUser);

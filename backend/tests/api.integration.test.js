@@ -133,6 +133,44 @@ test("POST /api/auth/login requires OTP and verifies successfully", async () => 
   assert.ok(verifyRes.body.data.refreshToken);
 });
 
+test("POST /api/auth/login supports phone OTP channel", async () => {
+  await request(app).post("/api/auth/register").send({
+    name: "Phone User",
+    email: "phone_user@example.com",
+    phone: "+919876543210",
+    password: "password123",
+  });
+
+  const loginRes = await request(app).post("/api/auth/login").send({
+    email: "phone_user@example.com",
+    password: "password123",
+    channel: "phone",
+  });
+
+  assert.equal(loginRes.status, 200);
+  assert.equal(loginRes.body.success, true);
+  assert.equal(loginRes.body.data.otpRequired, true);
+  assert.equal(loginRes.body.data.channel, "phone");
+
+  const user = await User.findOne({ email: "phone_user@example.com" });
+  user.phoneOtp.hash = crypto.createHash("sha256").update("000000").digest("hex");
+  user.phoneOtp.purpose = "login_phone";
+  user.phoneOtp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  user.phoneOtp.attempts = 0;
+  await user.save();
+
+  const verifyRes = await request(app).post("/api/auth/login/verify-otp").send({
+    email: "phone_user@example.com",
+    otp: "000000",
+    channel: "phone",
+  });
+
+  assert.equal(verifyRes.status, 200);
+  assert.equal(verifyRes.body.success, true);
+  assert.ok(verifyRes.body.data.accessToken);
+  assert.ok(verifyRes.body.data.refreshToken);
+});
+
 test("GET /api/bookings/my returns 401 without token", async () => {
   const response = await request(app).get("/api/bookings/my");
 

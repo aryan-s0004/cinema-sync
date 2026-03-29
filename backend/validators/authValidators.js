@@ -1,4 +1,6 @@
-const { isNonEmptyString, normalizeEmail } = require("./common");
+const { isNonEmptyString, normalizeEmail, normalizePhone } = require("./common");
+
+const isValidPhone = (value) => /^\+?[1-9]\d{7,14}$/.test(value);
 
 const registerValidator = (body) => {
   const { name, email, password } = body;
@@ -16,11 +18,17 @@ const registerValidator = (body) => {
     return { error: "Password must be at least 6 characters" };
   }
 
+  const normalizedPhone = normalizePhone(body?.phone || "");
+  if (normalizedPhone && !isValidPhone(normalizedPhone)) {
+    return { error: "phone must be in international format (for example +919876543210)" };
+  }
+
   return {
     value: {
       name: name.trim(),
       email: normalizedEmail,
       password,
+      phone: normalizedPhone || undefined,
     },
   };
 };
@@ -37,10 +45,16 @@ const loginValidator = (body) => {
     return { error: "password is required" };
   }
 
+  const channel = String(body?.channel || "email").trim().toLowerCase();
+  if (!["email", "phone"].includes(channel)) {
+    return { error: "channel must be email or phone" };
+  }
+
   return {
     value: {
       email: normalizedEmail,
       password,
+      channel,
     },
   };
 };
@@ -59,12 +73,17 @@ const otpVerifyValidator = (body) => {
     return { error: "Valid email is required" };
   }
 
+  const channel = String(body?.channel || "email").trim().toLowerCase();
+  if (!["email", "phone"].includes(channel)) {
+    return { error: "channel must be email or phone" };
+  }
+
   const otp = String(body.otp || "").trim();
   if (!/^\d{6}$/.test(otp)) {
     return { error: "otp must be a 6-digit code" };
   }
 
-  return { value: { email: normalizedEmail, otp } };
+  return { value: { email: normalizedEmail, otp, channel } };
 };
 
 const otpResendValidator = (body) => {
@@ -74,11 +93,16 @@ const otpResendValidator = (body) => {
   }
 
   const purpose = String(body.purpose || "").trim();
-  if (!["login", "email_verification"].includes(purpose)) {
-    return { error: "purpose must be login or email_verification" };
+  if (!["login", "email_verification", "login_phone"].includes(purpose)) {
+    return { error: "purpose must be login, login_phone or email_verification" };
   }
 
-  return { value: { email: normalizedEmail, purpose } };
+  const channel = String(body?.channel || (purpose === "login_phone" ? "phone" : "email")).trim().toLowerCase();
+  if (!["email", "phone"].includes(channel)) {
+    return { error: "channel must be email or phone" };
+  }
+
+  return { value: { email: normalizedEmail, purpose, channel } };
 };
 
 const googleAuthValidator = (body) => {
