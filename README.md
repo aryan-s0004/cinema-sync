@@ -135,3 +135,11 @@ Payload:
   - `/api/auth/test`
   - `/api/auth/email-health`
   - `/api/auth/sms-health`
+
+
+## OTP Debug Safety
+
+- Set OTP_DEBUG_PREVIEW=false in production (recommended).
+- Keep it true only for local debugging when email/SMS providers are unavailable.
+
+

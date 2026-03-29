@@ -40,6 +40,8 @@ const OTP_EXPIRY_MINUTES = Math.max(Number(process.env.OTP_EXPIRY_MINUTES || 5),
 const OTP_MIN_RESEND_SECONDS = Math.max(Number(process.env.OTP_MIN_RESEND_SECONDS || 30), 15);
 const OTP_MAX_ATTEMPTS = 5;
 const isDevLike = process.env.NODE_ENV !== "production";
+const OTP_DEBUG_PREVIEW = String(process.env.OTP_DEBUG_PREVIEW || "false").toLowerCase() === "true";
+const getOtpPreview = ({ delivered, otp }) => (OTP_DEBUG_PREVIEW && !delivered ? otp : undefined);
 
 let googleClientInstance = null;
 const getGoogleClient = () => {
@@ -175,7 +177,7 @@ const registerUser = async (req, res, next) => {
             expiresAt: otpData.expiresAt,
             deliveryMode: otpDelivery.mode,
             smtpConfigured: hasSmtpCredentials(),
-            otpPreview: otpDelivery.delivered || !isDevLike ? undefined : otpData.otp,
+            otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
           },
         },
         "User registered. Verification OTP sent to email."
@@ -245,7 +247,7 @@ const loginUser = async (req, res, next) => {
       deliveryMode: otpDelivery.mode,
       smtpConfigured: channel === "email" ? hasSmtpCredentials() : undefined,
       smsConfigured: channel === "phone" ? hasSmsCredentials() : undefined,
-      otpPreview: otpDelivery.delivered || !isDevLike ? undefined : otpData.otp,
+      otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
     }, `OTP sent for ${channel} login verification`));
   } catch (error) {
     next(error);
@@ -445,7 +447,7 @@ const resendOtp = async (req, res, next) => {
           deliveryMode: otpDelivery.mode,
           smtpConfigured: channel === "email" ? hasSmtpCredentials() : undefined,
           smsConfigured: channel === "phone" ? hasSmsCredentials() : undefined,
-          otpPreview: otpDelivery.delivered || !isDevLike ? undefined : otpData.otp,
+          otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
         },
         "OTP resent"
       )
@@ -624,3 +626,5 @@ module.exports = {
   getMe,
   logoutUser,
 };
+
+
