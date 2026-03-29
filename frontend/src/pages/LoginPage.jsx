@@ -16,17 +16,31 @@ const GoogleGlyph = () => (
 const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, loginWithGoogle, verifyLoginOtp, resendOtp } = useAuth();
+  const {
+    login,
+    loginWithGoogle,
+    requestLoginOtp,
+    verifyLoginOtp,
+    resendOtp,
+    forgotPassword,
+    resetPassword,
+  } = useAuth();
 
   const [form, setForm] = useState({ email: "", password: "" });
+  const [signInMode, setSignInMode] = useState("password");
   const [otp, setOtp] = useState("");
   const [otpStage, setOtpStage] = useState(false);
   const [otpExpiresAt, setOtpExpiresAt] = useState(null);
   const [otpSeconds, setOtpSeconds] = useState(0);
   const [deliveryMode, setDeliveryMode] = useState("");
+  const [forgotStage, setForgotStage] = useState("none");
+  const [resetForm, setResetForm] = useState({ email: "", otp: "", newPassword: "" });
+  const [resetExpiresAt, setResetExpiresAt] = useState(null);
+  const [resetSeconds, setResetSeconds] = useState(0);
+  const [info, setInfo] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loginChannel, setLoginChannel] = useState("email");
+  const [channel, setChannel] = useState("email");
   const [otpChannel, setOtpChannel] = useState("email");
   const [googleReady, setGoogleReady] = useState(false);
 
@@ -38,9 +52,27 @@ const LoginPage = () => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  const handleSubmit = async (event) => {
+  const handleResetChange = (field) => (event) => {
+    const value = field === "otp"
+      ? event.target.value.replace(/\D/g, "").slice(0, 6)
+      : event.target.value;
+    setResetForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const activateSignInMode = (mode) => {
+    setSignInMode(mode);
+    setOtpStage(false);
+    setOtp("");
+    setOtpExpiresAt(null);
+    setForgotStage("none");
+    setInfo("");
+    setError("");
+  };
+
+  const handlePasswordSignIn = async (event) => {
     event.preventDefault();
     setError("");
+    setInfo("");
 
     if (!form.email || !form.password) {
       setError("Email and password are required");
@@ -49,13 +81,14 @@ const LoginPage = () => {
 
     try {
       setLoading(true);
-      const loginResult = await login({ ...form, channel: loginChannel });
+      const loginResult = await login({ ...form, channel });
 
       if (loginResult?.otpRequired) {
         setOtpStage(true);
-        setOtpChannel(loginResult.channel || loginChannel);
+        setOtpChannel(loginResult.channel || channel);
         setOtpExpiresAt(loginResult.expiresAt);
         setDeliveryMode(loginResult.deliveryMode || "");
+        setInfo(`Verification code sent via ${loginResult.channel === "phone" ? "phone OTP" : "email OTP"}.`);
         return;
       }
 
@@ -67,9 +100,35 @@ const LoginPage = () => {
     }
   };
 
+  const handleOtpSignInRequest = async (event) => {
+    event.preventDefault();
+    setError("");
+    setInfo("");
+
+    if (!form.email) {
+      setError("Email is required");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await requestLoginOtp({ email: form.email, channel });
+      setOtpStage(true);
+      setOtpChannel(data.channel || channel);
+      setOtpExpiresAt(data.expiresAt);
+      setDeliveryMode(data.deliveryMode || "");
+      setInfo(`OTP sent via ${data.channel === "phone" ? "phone" : "email"}.`);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleVerifyOtp = async (event) => {
     event.preventDefault();
     setError("");
+    setInfo("");
 
     if (!/^\d{6}$/.test(otp)) {
       setError("Enter valid 6-digit OTP");
@@ -90,6 +149,8 @@ const LoginPage = () => {
   const handleResendOtp = async () => {
     try {
       setLoading(true);
+      setError("");
+      setInfo("");
       const data = await resendOtp({
         email: form.email,
         purpose: otpChannel === "phone" ? "login_phone" : "login",
@@ -98,9 +159,95 @@ const LoginPage = () => {
       setOtpExpiresAt(data.expiresAt);
       setDeliveryMode(data.deliveryMode || "");
       setOtp("");
-      setError("");
+      setInfo("OTP resent successfully.");
     } catch (err) {
       setError(err.response?.data?.message || "Could not resend OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openForgotPassword = () => {
+    setForgotStage("request");
+    setOtpStage(false);
+    setOtp("");
+    setOtpExpiresAt(null);
+    setResetForm((prev) => ({ ...prev, email: form.email || prev.email }));
+    setError("");
+    setInfo("");
+  };
+
+  const handleForgotPassword = async (event) => {
+    event.preventDefault();
+    setError("");
+    setInfo("");
+
+    if (!resetForm.email) {
+      setError("Email is required");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const data = await forgotPassword({ email: resetForm.email });
+      setResetExpiresAt(data?.expiresAt || null);
+      setForgotStage("verify");
+      setInfo("If your account exists, a reset code is sent to your email.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not send reset code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResendResetOtp = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const data = await resendOtp({
+        email: resetForm.email,
+        purpose: "password_reset",
+        channel: "email",
+      });
+      setResetExpiresAt(data.expiresAt);
+      setResetForm((prev) => ({ ...prev, otp: "" }));
+      setInfo("Reset code resent successfully.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not resend reset code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (event) => {
+    event.preventDefault();
+    setError("");
+    setInfo("");
+
+    if (!resetForm.email || !/^\d{6}$/.test(resetForm.otp) || !resetForm.newPassword) {
+      setError("Email, valid 6-digit code and new password are required");
+      return;
+    }
+    if (resetForm.newPassword.length < 6) {
+      setError("New password must be at least 6 characters");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await resetPassword({
+        email: resetForm.email,
+        otp: resetForm.otp,
+        newPassword: resetForm.newPassword,
+      });
+      setForgotStage("none");
+      setSignInMode("password");
+      setForm((prev) => ({ ...prev, email: resetForm.email, password: "" }));
+      setResetForm({ email: resetForm.email, otp: "", newPassword: "" });
+      setResetExpiresAt(null);
+      setInfo("Password reset successful. Please sign in.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Password reset failed");
     } finally {
       setLoading(false);
     }
@@ -116,6 +263,7 @@ const LoginPage = () => {
     try {
       setLoading(true);
       setError("");
+      setInfo("");
       await loginWithGoogle(token);
       navigate(redirectTo, { replace: true });
     } catch (err) {
@@ -126,7 +274,7 @@ const LoginPage = () => {
   }, [loginWithGoogle, navigate, redirectTo]);
 
   useEffect(() => {
-    if (!googleClientId || otpStage) return undefined;
+    if (!googleClientId || otpStage || forgotStage !== "none") return undefined;
 
     const initializeGoogle = () => {
       const googleApi = window.google?.accounts?.id;
@@ -166,7 +314,7 @@ const LoginPage = () => {
       script.onload = null;
       script.onerror = null;
     };
-  }, [googleClientId, handleGoogleSuccess, otpStage]);
+  }, [googleClientId, handleGoogleSuccess, otpStage, forgotStage]);
 
   useEffect(() => {
     if (!otpExpiresAt) {
@@ -182,40 +330,84 @@ const LoginPage = () => {
     return () => clearInterval(interval);
   }, [otpExpiresAt]);
 
+  useEffect(() => {
+    if (!resetExpiresAt) {
+      setResetSeconds(0);
+      return undefined;
+    }
+
+    const interval = setInterval(() => {
+      const remaining = Math.max(0, Math.floor((new Date(resetExpiresAt).getTime() - Date.now()) / 1000));
+      setResetSeconds(remaining);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [resetExpiresAt]);
+
   return (
     <section className="mx-auto mt-8 w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-black/30">
       <div className="mb-5 space-y-1">
         <h1 className="text-2xl font-semibold text-white">Welcome back</h1>
-        <p className="text-sm text-slate-400">Sign in to continue your CinemaSync booking flow.</p>
+        <p className="text-sm text-slate-400">Sign in to continue your CinemaSync booking flow</p>
       </div>
 
-      {!otpStage ? (
+      {forgotStage === "none" && !otpStage ? (
         <div className="space-y-4">
-          <form className="space-y-4" onSubmit={handleSubmit}>
-            <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
-            <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Enter password" />
+          <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-700 bg-slate-950/50 p-1 text-xs">
+            <button
+              type="button"
+              className={`rounded-md px-2 py-2 transition ${signInMode === "password" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+              onClick={() => activateSignInMode("password")}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              className={`rounded-md px-2 py-2 transition ${signInMode === "otp" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+              onClick={() => activateSignInMode("otp")}
+            >
+              Sign in via OTP
+            </button>
+          </div>
 
-            <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-700 bg-slate-950/50 p-1 text-xs">
-              <button
-                type="button"
-                className={`rounded-md px-2 py-2 transition ${loginChannel === "email" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-                onClick={() => setLoginChannel("email")}
-              >
-                Email OTP
-              </button>
-              <button
-                type="button"
-                className={`rounded-md px-2 py-2 transition ${loginChannel === "phone" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-                onClick={() => setLoginChannel("phone")}
-              >
-                Phone OTP
-              </button>
+          <form className="space-y-4" onSubmit={signInMode === "password" ? handlePasswordSignIn : handleOtpSignInRequest}>
+            <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
+            {signInMode === "password" ? (
+              <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Enter password" />
+            ) : null}
+
+            <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
+              <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">Receive OTP via</p>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <button
+                  type="button"
+                  className={`rounded-md px-2 py-2 transition ${channel === "email" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+                  onClick={() => setChannel("email")}
+                >
+                  Email OTP
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-md px-2 py-2 transition ${channel === "phone" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
+                  onClick={() => setChannel("phone")}
+                >
+                  Phone OTP
+                </button>
+              </div>
             </div>
 
             <Button type="submit" loading={loading} className="w-full">
-              Sign In
+              {signInMode === "password" ? "Sign In" : "Send OTP"}
             </Button>
           </form>
+
+          <button
+            type="button"
+            className="text-sm text-cyan-300 hover:text-cyan-200"
+            onClick={openForgotPassword}
+          >
+            Forgot password?
+          </button>
 
           <div className="flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-500">
             <span className="h-px flex-1 bg-slate-700" />
@@ -238,7 +430,9 @@ const LoginPage = () => {
             </p>
           )}
         </div>
-      ) : (
+      ) : null}
+
+      {otpStage ? (
         <form className="space-y-4" onSubmit={handleVerifyOtp}>
           <p className="text-sm text-slate-300">
             Enter OTP sent to {otpChannel === "phone" ? "your registered phone number" : form.email}
@@ -265,10 +459,81 @@ const LoginPage = () => {
               Resend
             </Button>
           </div>
+
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full"
+            onClick={() => {
+              setOtpStage(false);
+              setOtp("");
+              setOtpExpiresAt(null);
+              setInfo("");
+              setError("");
+            }}
+          >
+            Back to sign in
+          </Button>
         </form>
-      )}
+      ) : null}
+
+      {forgotStage === "request" ? (
+        <form className="space-y-4" onSubmit={handleForgotPassword}>
+          <p className="text-sm text-slate-300">Enter your email to receive a password reset code</p>
+          <Input
+            label="Email"
+            type="email"
+            value={resetForm.email}
+            onChange={handleResetChange("email")}
+            placeholder="you@example.com"
+          />
+          <div className="flex gap-3">
+            <Button type="submit" loading={loading} className="w-full">
+              Send reset code
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => setForgotStage("none")} className="w-full">
+              Back
+            </Button>
+          </div>
+        </form>
+      ) : null}
+
+      {forgotStage === "verify" ? (
+        <form className="space-y-4" onSubmit={handleResetPassword}>
+          <p className="text-sm text-slate-300">Enter the code sent to {resetForm.email}</p>
+          <Input
+            label="Reset code"
+            value={resetForm.otp}
+            onChange={handleResetChange("otp")}
+            placeholder="123456"
+            maxLength={6}
+          />
+          <Input
+            label="New password"
+            type="password"
+            value={resetForm.newPassword}
+            onChange={handleResetChange("newPassword")}
+            placeholder="Minimum 6 characters"
+          />
+          <p className="text-xs text-slate-400">
+            Code expires in: {Math.floor(resetSeconds / 60)}:{String(resetSeconds % 60).padStart(2, "0")}
+          </p>
+          <div className="flex gap-3">
+            <Button type="submit" loading={loading} className="w-full">
+              Reset password
+            </Button>
+            <Button type="button" variant="secondary" loading={loading} onClick={handleResendResetOtp}>
+              Resend
+            </Button>
+          </div>
+          <Button type="button" variant="ghost" className="w-full" onClick={() => setForgotStage("none")}>
+            Back to sign in
+          </Button>
+        </form>
+      ) : null}
 
       {error ? <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p> : null}
+      {info ? <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">{info}</p> : null}
 
       <p className="mt-4 text-sm text-slate-400">
         New here? <Link to="/register" className="text-cyan-300 hover:text-cyan-200">Create account</Link>
