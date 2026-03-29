@@ -22,7 +22,7 @@ const userSchema = new mongoose.Schema(
     phoneVerified: { type: Boolean, default: false },
     otp: {
       hash: { type: String, default: null },
-      purpose: { type: String, enum: ["email_verification", "login"], default: null },
+      purpose: { type: String, enum: ["email_verification", "login", "password_reset"], default: null },
       expiresAt: { type: Date, default: null },
       attempts: { type: Number, default: 0 },
       lastSentAt: { type: Date, default: null },
