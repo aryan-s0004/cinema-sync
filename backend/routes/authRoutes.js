@@ -7,6 +7,7 @@ const {
   resendOtp,
   getEmailHealth,
   getSmsHealth,
+  getProviderHealth,
   sendEmailTest,
   refreshAccessToken,
   getMe,
@@ -31,6 +32,7 @@ router.get("/test", protect, adminOnly, (_req, res) => {
 });
 router.get("/email-health", protect, adminOnly, getEmailHealth);
 router.get("/sms-health", protect, adminOnly, getSmsHealth);
+router.get("/provider-health", protect, adminOnly, getProviderHealth);
 
 router.post("/register", validateRequest({ body: registerValidator }), registerUser);
 router.post("/login", validateRequest({ body: loginValidator }), loginUser);

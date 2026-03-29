@@ -552,6 +552,43 @@ const getSmsHealth = async (_req, res, next) => {
   }
 };
 
+const getProviderHealth = async (_req, res, next) => {
+  try {
+    const googleClientId = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+    const smtpHost = process.env.SMTP_HOST || null;
+    const emailProvider = smtpHost ? "smtp" : process.env.EMAIL_SERVICE || "gmail";
+
+    let smsProvider = "none";
+    if ((process.env.TWILIO_ACCOUNT_SID || "").trim()) smsProvider = "twilio";
+    else if ((process.env.FAST2SMS_API_KEY || "").trim()) smsProvider = "fast2sms";
+
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          google: {
+            configured: Boolean(googleClientId),
+            clientIdPreview: googleClientId ? `${googleClientId.slice(0, 12)}...` : null,
+          },
+          email: {
+            configured: hasSmtpCredentials(),
+            provider: emailProvider,
+            fallbackToLog: String(process.env.EMAIL_FALLBACK_TO_LOG || "true").toLowerCase() === "true",
+          },
+          sms: {
+            configured: hasSmsCredentials(),
+            provider: smsProvider,
+            fallbackToLog: String(process.env.SMS_FALLBACK_TO_LOG || "true").toLowerCase() === "true",
+          },
+        },
+        "Auth provider health fetched"
+      )
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
 const sendEmailTest = async (req, res, next) => {
   try {
     const to = req.user?.email;
@@ -581,6 +618,7 @@ module.exports = {
   resendOtp,
   getEmailHealth,
   getSmsHealth,
+  getProviderHealth,
   sendEmailTest,
   refreshAccessToken,
   getMe,
