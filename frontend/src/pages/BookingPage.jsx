@@ -5,7 +5,7 @@ import SeatGrid from "../components/booking/SeatGrid";
 import BookingSummary from "../components/booking/BookingSummary";
 import Button from "../components/ui/Button";
 import useBooking from "../hooks/useBooking";
-import formatDateTime from "../utils/formatDate";
+import formatDateTime, { formatShowWindow } from "../utils/formatDate";
 import formatPrice from "../utils/formatPrice";
 import { buildSeatStats } from "../utils/showInsights";
 
@@ -193,6 +193,7 @@ const BookingPage = () => {
             <p className="font-medium text-white">{show.movie?.title}</p>
             <p>{show.theatreName} - {show.screenName}</p>
             <p>{formatDateTime(show.showTime)}</p>
+            <p className="text-xs text-slate-400">Timing: {formatShowWindow(show.showTime, show?.movie?.duration || 150)}</p>
             <p>{formatPrice(show.price)} per seat</p>
             <p className="mt-2 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-2 py-1 text-xs text-cyan-200">{showtimeInsight}</p>
           </div>

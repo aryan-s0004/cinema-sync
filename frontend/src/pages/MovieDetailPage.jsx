@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { movieApi } from "../api/movies";
 import { bookingApi } from "../api/bookings";
-import formatDateTime, { formatTime12Hour, formatTime24Hour, getShowtimeSegment } from "../utils/formatDate";
+import formatDateTime, { formatShowWindow, formatShowWindow24, getShowtimeSegment } from "../utils/formatDate";
 import formatPrice from "../utils/formatPrice";
 import { buildSeatStats, buildShowInsights } from "../utils/showInsights";
 import Button from "../components/ui/Button";
@@ -143,6 +143,7 @@ const MovieDetailPage = () => {
                 const showKey = String(show._id || "");
                 const insight = insightByShowId[showKey];
                 const isBestSlot = showKey === showInsightData.bestShowId;
+                const duration = show?.movie?.duration || movie?.duration || 150;
 
                 return (
                   <article
@@ -155,7 +156,7 @@ const MovieDetailPage = () => {
                       <h3 className="font-medium text-white">{show.theatreName} - {show.screenName}</h3>
                       <p className="text-sm text-slate-400">{formatDateTime(show.showTime)}</p>
                       <p className="text-xs text-slate-500">
-                        Time: {formatTime12Hour(show.showTime)} ({formatTime24Hour(show.showTime)})
+                        Timing: {formatShowWindow(show.showTime, duration)} ({formatShowWindow24(show.showTime, duration)})
                       </p>
                       <p className="text-xs text-cyan-300">{getShowtimeSegment(show.showTime)} Show</p>
                       <p className="text-sm text-slate-400">{formatPrice(show.price)} per seat</p>
