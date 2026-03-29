@@ -2,6 +2,9 @@ const express = require("express");
 const {
   registerUser,
   loginUser,
+  requestLoginOtp,
+  forgotPassword,
+  resetPassword,
   verifyLoginOtp,
   verifyAccountOtp,
   resendOtp,
@@ -19,7 +22,10 @@ const validateRequest = require("../middleware/validateRequest");
 const {
   registerValidator,
   loginValidator,
+  loginOtpRequestValidator,
   refreshValidator,
+  forgotPasswordValidator,
+  resetPasswordValidator,
   otpVerifyValidator,
   otpResendValidator,
   googleAuthValidator,
@@ -36,10 +42,13 @@ router.get("/provider-health", protect, adminOnly, getProviderHealth);
 
 router.post("/register", validateRequest({ body: registerValidator }), registerUser);
 router.post("/login", validateRequest({ body: loginValidator }), loginUser);
+router.post("/login/otp/request", validateRequest({ body: loginOtpRequestValidator }), requestLoginOtp);
 router.post("/google", validateRequest({ body: googleAuthValidator }), googleAuth);
 router.post("/login/verify-otp", validateRequest({ body: otpVerifyValidator }), verifyLoginOtp);
 router.post("/verify-account-otp", validateRequest({ body: otpVerifyValidator }), verifyAccountOtp);
 router.post("/otp/resend", validateRequest({ body: otpResendValidator }), resendOtp);
+router.post("/password/forgot", validateRequest({ body: forgotPasswordValidator }), forgotPassword);
+router.post("/password/reset", validateRequest({ body: resetPasswordValidator }), resetPassword);
 router.post("/refresh", validateRequest({ body: refreshValidator }), refreshAccessToken);
 router.get("/me", protect, getMe);
 router.post("/email-test", protect, sendEmailTest);
