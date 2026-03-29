@@ -64,6 +64,13 @@ const maskPhone = (value) => {
   if (cleaned.length < 4) return value || "";
   return `${"*".repeat(Math.max(cleaned.length - 4, 2))}${cleaned.slice(-4)}`;
 };
+const emptyOtpState = () => ({
+  hash: null,
+  purpose: null,
+  expiresAt: null,
+  attempts: 0,
+  lastSentAt: null,
+});
 
 const setUserOtp = async (user, purpose, field = "otp") => {
   const now = Date.now();
@@ -112,14 +119,53 @@ const verifyStoredOtp = async ({ user, otp, purpose, field = "otp" }) => {
 };
 
 const clearUserOtp = async (user, field = "otp") => {
-  user[field] = {
-    hash: null,
-    purpose: null,
-    expiresAt: null,
-    attempts: 0,
-    lastSentAt: null,
-  };
+  user[field] = emptyOtpState();
   await user.save();
+};
+
+const sendOtpForUser = async ({ user, channel = "email", purpose = "login" }) => {
+  if (!["email", "phone"].includes(channel)) {
+    throw new ApiError(400, "channel must be email or phone");
+  }
+
+  if (channel === "phone" && !user.phone) {
+    throw new ApiError(400, "No phone number linked to this account");
+  }
+
+  const otpField = channel === "phone" ? "phoneOtp" : "otp";
+  const otpPurpose = channel === "phone" ? "login_phone" : purpose;
+  const otpData = await setUserOtp(user, otpPurpose, otpField);
+
+  const otpDelivery = channel === "phone"
+    ? await sendOtpSms({
+        to: user.phone,
+        otp: otpData.otp,
+        purpose: otpPurpose,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
+      }).catch(() => ({ delivered: false, mode: "error" }))
+    : await sendOtpEmail({
+        to: user.email,
+        name: user.name,
+        otp: otpData.otp,
+        purpose: otpPurpose,
+        expiresInMinutes: OTP_EXPIRY_MINUTES,
+      }).catch(() => ({ delivered: false, mode: "error" }));
+
+  if (!otpDelivery.delivered && !isDevLike) {
+    throw new ApiError(503, `${channel === "phone" ? "SMS" : "Email"} OTP delivery failed. Please try again.`);
+  }
+
+  return {
+    email: user.email,
+    purpose: otpPurpose,
+    channel,
+    phoneMasked: channel === "phone" ? maskPhone(user.phone) : null,
+    expiresAt: otpData.expiresAt,
+    deliveryMode: otpDelivery.mode,
+    smtpConfigured: channel === "email" ? hasSmtpCredentials() : undefined,
+    smsConfigured: channel === "phone" ? hasSmsCredentials() : undefined,
+    otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
+  };
 };
 
 const registerUser = async (req, res, next) => {
@@ -212,43 +258,42 @@ const loginUser = async (req, res, next) => {
       throw new ApiError(401, "Invalid credentials");
     }
 
+    const otpPayload = await sendOtpForUser({ user, channel, purpose: "login" });
+    res.json(
+      new ApiResponse(200, {
+        otpRequired: true,
+        ...otpPayload,
+      }, `OTP sent for ${channel} login verification`)
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+const requestLoginOtp = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const channel = String(req.body?.channel || "email").trim().toLowerCase();
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+
+    if (user.authProvider === "google" && user.googleId) {
+      throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
+    }
+
     if (channel === "phone" && !user.phone) {
       throw new ApiError(400, "No phone number linked to this account. Use email OTP or update profile.");
     }
 
-    const otpField = channel === "phone" ? "phoneOtp" : "otp";
-    const otpPurpose = channel === "phone" ? "login_phone" : "login";
-    const otpData = await setUserOtp(user, otpPurpose, otpField);
-    const otpDelivery = channel === "phone"
-      ? await sendOtpSms({
-          to: user.phone,
-          otp: otpData.otp,
-          purpose: otpPurpose,
-          expiresInMinutes: OTP_EXPIRY_MINUTES,
-        }).catch(() => ({ delivered: false, mode: "error" }))
-      : await sendOtpEmail({
-          to: user.email,
-          name: user.name,
-          otp: otpData.otp,
-          purpose: otpPurpose,
-          expiresInMinutes: OTP_EXPIRY_MINUTES,
-        }).catch(() => ({ delivered: false, mode: "error" }));
-
-    if (!otpDelivery.delivered && !isDevLike) {
-      throw new ApiError(503, `${channel === "phone" ? "SMS" : "Email"} OTP delivery failed. Please try again.`);
-    }
-
-    res.json(new ApiResponse(200, {
-      otpRequired: true,
-      email: user.email,
-      channel,
-      phoneMasked: channel === "phone" ? maskPhone(user.phone) : null,
-      expiresAt: otpData.expiresAt,
-      deliveryMode: otpDelivery.mode,
-      smtpConfigured: channel === "email" ? hasSmtpCredentials() : undefined,
-      smsConfigured: channel === "phone" ? hasSmsCredentials() : undefined,
-      otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
-    }, `OTP sent for ${channel} login verification`));
+    const otpPayload = await sendOtpForUser({ user, channel, purpose: "login" });
+    res.json(
+      new ApiResponse(200, {
+        otpRequired: true,
+        ...otpPayload,
+      }, `OTP sent for ${channel} login verification`)
+    );
   } catch (error) {
     next(error);
   }
@@ -313,6 +358,70 @@ const verifyAccountOtp = async (req, res, next) => {
     await clearUserOtp(user, "otp");
 
     res.json(new ApiResponse(200, { emailVerified: true }, "Email verified successfully"));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user || (user.authProvider === "google" && user.googleId)) {
+      return res.json(
+        new ApiResponse(
+          200,
+          { requested: true },
+          "If an account exists, a reset code has been sent to the email."
+        )
+      );
+    }
+
+    const otpPayload = await sendOtpForUser({
+      user,
+      channel: "email",
+      purpose: "password_reset",
+    });
+
+    return res.json(
+      new ApiResponse(
+        200,
+        {
+          requested: true,
+          email: otpPayload.email,
+          expiresAt: otpPayload.expiresAt,
+          deliveryMode: otpPayload.deliveryMode,
+          smtpConfigured: otpPayload.smtpConfigured,
+          otpPreview: otpPayload.otpPreview,
+        },
+        "If an account exists, a reset code has been sent to the email."
+      )
+    );
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      throw new ApiError(404, "User not found");
+    }
+    if (user.authProvider === "google" && user.googleId) {
+      throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
+    }
+
+    await verifyStoredOtp({ user, otp, purpose: "password_reset", field: "otp" });
+    user.otp = emptyOtpState();
+    user.password = newPassword;
+    user.refreshToken = null;
+    await user.save();
+
+    res.json(new ApiResponse(200, { reset: true }, "Password updated successfully"));
   } catch (error) {
     next(error);
   }
@@ -391,7 +500,7 @@ const resendOtp = async (req, res, next) => {
   try {
     const { email, purpose } = req.body;
     const channel = String(req.body?.channel || (purpose === "login_phone" ? "phone" : "email")).trim().toLowerCase();
-    const validPurposes = ["login", "email_verification", "login_phone"];
+    const validPurposes = ["login", "email_verification", "login_phone", "password_reset"];
     if (!validPurposes.includes(purpose)) {
       throw new ApiError(400, `purpose must be one of: ${validPurposes.join(", ")}`);
     }
@@ -404,6 +513,9 @@ const resendOtp = async (req, res, next) => {
     if (channel === "email" && purpose === "login_phone") {
       throw new ApiError(400, "login_phone purpose requires phone channel");
     }
+    if (purpose === "password_reset" && channel !== "email") {
+      throw new ApiError(400, "password_reset purpose supports only email channel");
+    }
 
     const user = await User.findOne({ email: email.toLowerCase() });
     if (!user) {
@@ -413,45 +525,13 @@ const resendOtp = async (req, res, next) => {
       throw new ApiError(400, "No phone number linked to this account");
     }
 
-    const otpField = channel === "phone" ? "phoneOtp" : "otp";
-    const otpPurpose = channel === "phone" ? "login_phone" : purpose;
-    const otpData = await setUserOtp(user, otpPurpose, otpField);
-    const otpDelivery = channel === "phone"
-      ? await sendOtpSms({
-          to: user.phone,
-          otp: otpData.otp,
-          purpose: otpPurpose,
-          expiresInMinutes: OTP_EXPIRY_MINUTES,
-        }).catch(() => ({ delivered: false, mode: "error" }))
-      : await sendOtpEmail({
-          to: user.email,
-          name: user.name,
-          otp: otpData.otp,
-          purpose: otpPurpose,
-          expiresInMinutes: OTP_EXPIRY_MINUTES,
-        }).catch(() => ({ delivered: false, mode: "error" }));
+    const otpPayload = await sendOtpForUser({
+      user,
+      channel,
+      purpose: purpose === "login_phone" ? "login" : purpose,
+    });
 
-    if (!otpDelivery.delivered && !isDevLike) {
-      throw new ApiError(503, `${channel === "phone" ? "SMS" : "Email"} OTP delivery failed. Please try again.`);
-    }
-
-    res.json(
-      new ApiResponse(
-        200,
-        {
-          email: user.email,
-          purpose: otpPurpose,
-          channel,
-          phoneMasked: channel === "phone" ? maskPhone(user.phone) : null,
-          expiresAt: otpData.expiresAt,
-          deliveryMode: otpDelivery.mode,
-          smtpConfigured: channel === "email" ? hasSmtpCredentials() : undefined,
-          smsConfigured: channel === "phone" ? hasSmsCredentials() : undefined,
-          otpPreview: getOtpPreview({ delivered: otpDelivery.delivered, otp: otpData.otp }),
-        },
-        "OTP resent"
-      )
-    );
+    res.json(new ApiResponse(200, otpPayload, "OTP resent"));
   } catch (error) {
     next(error);
   }
@@ -614,6 +694,9 @@ const sendEmailTest = async (req, res, next) => {
 module.exports = {
   registerUser,
   loginUser,
+  requestLoginOtp,
+  forgotPassword,
+  resetPassword,
   googleAuth,
   verifyLoginOtp,
   verifyAccountOtp,
