@@ -4,6 +4,7 @@ const Seat = require("../models/Seat");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
 const { parsePositiveInt } = require("../validators/common");
+const { DEFAULT_SHOW_TIMINGS, toNextShowTime } = require("../utils/showTimingCatalog");
 
 const generateSeatsForShow = async (showId, totalSeats) => {
   const seats = [];
@@ -25,32 +26,13 @@ const generateSeatsForShow = async (showId, totalSeats) => {
   await Seat.insertMany(seats, { ordered: false });
 };
 
-const DEFAULT_SHOW_TIMINGS = [
-  { hour: 9, minute: 0, screenName: "Screen 1", price: 180 },
-  { hour: 10, minute: 15, screenName: "Screen 2", price: 190 },
-  { hour: 12, minute: 30, screenName: "Screen 1", price: 210 },
-  { hour: 13, minute: 45, screenName: "Screen 3", price: 220 },
-  { hour: 16, minute: 0, screenName: "Screen 2", price: 240 },
-  { hour: 17, minute: 15, screenName: "Screen 1", price: 250 },
-  { hour: 19, minute: 30, screenName: "Screen 3", price: 280 },
-  { hour: 20, minute: 45, screenName: "Screen 2", price: 290 },
-  { hour: 22, minute: 30, screenName: "Screen 1", price: 310 },
-  { hour: 23, minute: 45, screenName: "Screen 3", price: 300 },
-];
-
 const createDefaultShowsForMovie = async (movieId) => {
   const now = new Date();
   const theatreName = "CinemaSync Multiplex";
 
   for (let i = 0; i < DEFAULT_SHOW_TIMINGS.length; i += 1) {
     const slot = DEFAULT_SHOW_TIMINGS[i];
-    const showTime = new Date(now);
-    showTime.setHours(slot.hour, slot.minute, 0, 0);
-
-    // Always keep default slots upcoming to avoid creating already-expired options.
-    if (showTime <= now) {
-      showTime.setDate(showTime.getDate() + 1);
-    }
+    const showTime = toNextShowTime(slot, now);
 
     const doc = await Show.findOneAndUpdate(
       {
@@ -101,7 +83,7 @@ const getAllShows = async (req, res, next) => {
 
     let [shows, total] = await Promise.all([
       Show.find(filter)
-        .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+        .populate({ path: "movie", select: "title posterPath language rating releaseDate duration" })
         .sort({ showTime: 1 })
         .skip(skip)
         .limit(limit)
@@ -115,7 +97,7 @@ const getAllShows = async (req, res, next) => {
         await createDefaultShowsForMovie(movieId);
         [shows, total] = await Promise.all([
           Show.find(filter)
-            .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+            .populate({ path: "movie", select: "title posterPath language rating releaseDate duration" })
             .sort({ showTime: 1 })
             .skip(skip)
             .limit(limit)
@@ -141,7 +123,7 @@ const getAllShows = async (req, res, next) => {
 const getShowById = async (req, res, next) => {
   try {
     const show = await Show.findById(req.params.id)
-      .populate({ path: "movie", select: "title posterPath language rating releaseDate" })
+      .populate({ path: "movie", select: "title posterPath language rating releaseDate duration" })
       .lean();
     if (!show) throw new ApiError(404, "Show not found");
     res.json(new ApiResponse(200, show, "Show fetched"));

@@ -7,6 +7,7 @@ dotenv.config({ path: path.join(__dirname, "..", ".env") });
 const Movie = require("../models/Movie");
 const Show = require("../models/Show");
 const Seat = require("../models/Seat");
+const { DEFAULT_SHOW_TIMINGS, toNextShowTime } = require("../utils/showTimingCatalog");
 
 const createSeatBatch = (showId, totalSeats = 60) => {
   const rows = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -59,16 +60,17 @@ const seedData = async () => {
     isActive: true,
   });
 
-  const showTimes = [2, 5, 8].map((hours) => new Date(Date.now() + hours * 60 * 60 * 1000));
   const shows = [];
+  const now = new Date();
 
-  for (let i = 0; i < showTimes.length; i += 1) {
+  for (let i = 0; i < DEFAULT_SHOW_TIMINGS.length; i += 1) {
+    const slot = DEFAULT_SHOW_TIMINGS[i];
     const show = await Show.create({
       movie: movie._id,
       theatreName: "CinemaSync Multiplex",
-      screenName: `Screen ${i + 1}`,
-      showTime: showTimes[i],
-      price: 220 + i * 20,
+      screenName: slot.screenName,
+      showTime: toNextShowTime(slot, now),
+      price: slot.price,
       totalSeats: 60,
       status: "active",
     });
