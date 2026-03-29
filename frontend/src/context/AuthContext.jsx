@@ -77,6 +77,11 @@ export const AuthProvider = ({ children }) => {
     return data.user;
   };
 
+  const requestLoginOtp = async (payload) => {
+    const data = await authApi.requestLoginOtp(payload);
+    return data;
+  };
+
   const loginWithGoogle = async (token) => {
     const data = await authApi.googleLogin({ token });
     persistSession(data);
@@ -106,9 +111,12 @@ export const AuthProvider = ({ children }) => {
       login,
       loginWithGoogle,
       verifyLoginOtp,
+      requestLoginOtp,
       register,
       resendOtp: authApi.resendOtp,
       verifyAccountOtp: authApi.verifyAccountOtp,
+      forgotPassword: authApi.forgotPassword,
+      resetPassword: authApi.resetPassword,
       logout
     }),
     [user, loading]
