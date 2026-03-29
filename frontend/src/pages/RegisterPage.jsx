@@ -22,11 +22,11 @@ const RegisterPage = () => {
   const [otpStage, setOtpStage] = useState(false);
   const [otpExpiresAt, setOtpExpiresAt] = useState(null);
   const [otpSeconds, setOtpSeconds] = useState(0);
-  const [otpHint, setOtpHint] = useState("");
   const [deliveryMode, setDeliveryMode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleReady, setGoogleReady] = useState(false);
+
   const googleButtonRef = useRef(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
@@ -39,7 +39,7 @@ const RegisterPage = () => {
     setError("");
 
     if (!form.name || !form.email || !form.password) {
-      setError("All fields are required");
+      setError("Name, email and password are required");
       return;
     }
 
@@ -54,7 +54,6 @@ const RegisterPage = () => {
       setOtpStage(true);
       setOtpExpiresAt(data?.emailVerification?.expiresAt || null);
       setDeliveryMode(data?.emailVerification?.deliveryMode || "");
-      setOtpHint(data?.emailVerification?.otpPreview ? `Dev OTP: ${data.emailVerification.otpPreview}` : "");
     } catch (err) {
       setError(err.response?.data?.message || "Registration failed");
     } finally {
@@ -65,6 +64,7 @@ const RegisterPage = () => {
   const handleVerifyOtp = async (event) => {
     event.preventDefault();
     setError("");
+
     if (!/^\d{6}$/.test(otp)) {
       setError("Enter valid 6-digit OTP");
       return;
@@ -87,7 +87,6 @@ const RegisterPage = () => {
       const data = await resendOtp({ email: form.email, purpose: "email_verification" });
       setOtpExpiresAt(data.expiresAt);
       setDeliveryMode(data.deliveryMode || "");
-      setOtpHint(data.otpPreview ? `Dev OTP: ${data.otpPreview}` : "");
       setError("");
     } catch (err) {
       setError(err.response?.data?.message || "Could not resend OTP");
@@ -173,55 +172,53 @@ const RegisterPage = () => {
   }, [otpExpiresAt]);
 
   return (
-    <section className="mx-auto max-w-md space-y-5 rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
-      <h1 className="text-2xl font-semibold text-white">Create your CinemaSync account</h1>
+    <section className="mx-auto mt-8 w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-black/30">
+      <div className="mb-5 space-y-1">
+        <h1 className="text-2xl font-semibold text-white">Create account</h1>
+        <p className="text-sm text-slate-400">Join CinemaSync and book your next show faster.</p>
+      </div>
 
       {!otpStage ? (
         <div className="space-y-4">
           <form className="space-y-4" onSubmit={handleSubmit}>
-            <Input label="Name" value={form.name} onChange={handleChange("name")} placeholder="Your name" />
+            <Input label="Full Name" value={form.name} onChange={handleChange("name")} placeholder="Your name" />
             <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
             <Input label="Phone (optional)" value={form.phone} onChange={handleChange("phone")} placeholder="+919876543210" />
             <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Minimum 6 characters" />
 
-            {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-
             <Button type="submit" loading={loading} className="w-full">
-              Register with Email
+              Create Account
             </Button>
           </form>
 
-          <div className="space-y-3">
-            <div className="flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-500">
-              <span className="h-px flex-1 bg-slate-700" />
-              <span>or continue with</span>
-              <span className="h-px flex-1 bg-slate-700" />
-            </div>
-
-            {googleClientId ? (
-              <div className="rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-950/70 to-slate-900/70 p-3">
-                <div className="mb-3 flex items-center justify-between rounded-xl border border-slate-700 bg-slate-900/70 px-3 py-2">
-                  <div className="flex items-center gap-2 text-sm text-slate-200">
-                    <GoogleGlyph />
-                    <span>Sign up with Google</span>
-                  </div>
-                  <span className="text-[11px] text-slate-400">1-tap eligible</span>
-                </div>
-                <div ref={googleButtonRef} className="flex justify-center rounded-xl border border-slate-700/80 bg-white/95 py-2" />
-                {!googleReady ? <p className="mt-2 text-center text-xs text-slate-500">Loading Google Sign-In...</p> : null}
-              </div>
-            ) : (
-              <p className="rounded-xl border border-dashed border-slate-700 p-3 text-xs text-slate-400">
-                Add <code>VITE_GOOGLE_CLIENT_ID</code> in frontend env to enable Google Sign-In.
-              </p>
-            )}
+          <div className="flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-500">
+            <span className="h-px flex-1 bg-slate-700" />
+            <span>or</span>
+            <span className="h-px flex-1 bg-slate-700" />
           </div>
+
+          {googleClientId ? (
+            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
+              <div className="mb-3 flex items-center gap-2 text-sm text-slate-200">
+                <GoogleGlyph />
+                <span>Sign up with Google</span>
+              </div>
+              <div ref={googleButtonRef} className="flex justify-center rounded-lg border border-slate-700/80 bg-white/95 py-2" />
+              {!googleReady ? <p className="mt-2 text-center text-xs text-slate-500">Loading Google Sign-In...</p> : null}
+            </div>
+          ) : (
+            <p className="rounded-lg border border-dashed border-slate-700 p-3 text-xs text-slate-400">
+              Add <code>VITE_GOOGLE_CLIENT_ID</code> in frontend env to enable Google Sign-In.
+            </p>
+          )}
         </div>
       ) : (
         <form className="space-y-4" onSubmit={handleVerifyOtp}>
           <p className="text-sm text-slate-300">Enter OTP sent to {form.email}</p>
           {deliveryMode && deliveryMode !== "smtp" ? (
-            <p className="text-xs text-amber-300">Email delivery mode: {deliveryMode}. Configure SMTP for real inbox delivery.</p>
+            <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">
+              Delivery mode: {deliveryMode}
+            </p>
           ) : null}
           <Input
             label="6-digit OTP"
@@ -231,22 +228,22 @@ const RegisterPage = () => {
             maxLength={6}
           />
           <p className="text-xs text-slate-400">OTP expires in: {Math.floor(otpSeconds / 60)}:{String(otpSeconds % 60).padStart(2, "0")}</p>
-          {otpHint ? <p className="text-xs text-cyan-300">{otpHint}</p> : null}
 
-          {error ? <p className="text-sm text-rose-400">{error}</p> : null}
           <div className="flex gap-3">
             <Button type="submit" loading={loading} className="w-full">
               Verify Email
             </Button>
             <Button type="button" variant="secondary" loading={loading} onClick={handleResendOtp}>
-              Resend OTP
+              Resend
             </Button>
           </div>
         </form>
       )}
 
-      <p className="text-sm text-slate-400">
-        Already have an account? <Link to="/login" className="text-cyan-300 hover:text-cyan-200">Login</Link>
+      {error ? <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p> : null}
+
+      <p className="mt-4 text-sm text-slate-400">
+        Already have an account? <Link to="/login" className="text-cyan-300 hover:text-cyan-200">Sign in</Link>
       </p>
     </section>
   );
