@@ -3,10 +3,13 @@ import api from "./client";
 export const authApi = {
   register: async (payload) => (await api.post("/auth/register", payload)).data.data,
   login: async (payload) => (await api.post("/auth/login", payload)).data.data,
+  requestLoginOtp: async (payload) => (await api.post("/auth/login/otp/request", payload)).data.data,
   googleLogin: async (payload) => (await api.post("/auth/google", payload)).data.data,
   verifyLoginOtp: async (payload) => (await api.post("/auth/login/verify-otp", payload)).data.data,
   verifyAccountOtp: async (payload) => (await api.post("/auth/verify-account-otp", payload)).data.data,
   resendOtp: async (payload) => (await api.post("/auth/otp/resend", payload)).data.data,
+  forgotPassword: async (payload) => (await api.post("/auth/password/forgot", payload)).data.data,
+  resetPassword: async (payload) => (await api.post("/auth/password/reset", payload)).data.data,
   emailHealth: async () => (await api.get("/auth/email-health")).data.data,
   smsHealth: async () => (await api.get("/auth/sms-health")).data.data,
   providerHealth: async () => (await api.get("/auth/provider-health")).data.data,
