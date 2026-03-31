@@ -13,7 +13,7 @@ const AdminRoute = ({ children }) => {
   }
 
   if (user?.role !== "admin") {
-    return <p className="text-center text-rose-300">Admin access required for scanner operations.</p>;
+    return <p className="text-center text-rose-300">Admin access required to view this page.</p>;
   }
 
   return children;

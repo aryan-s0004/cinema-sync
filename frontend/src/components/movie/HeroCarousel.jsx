@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import Button from "../ui/Button";
 
 const formatRating = (value) => {
@@ -54,7 +55,7 @@ const HeroCarousel = ({ movies = [], activeIntent = null }) => {
     return (
       <section className="card-surface reveal-up p-8">
         <h1 className="text-3xl font-semibold text-white">Movies loading...</h1>
-        <p className="mt-2 text-slate-400">We are preparing trending picks for your next booking.</p>
+        <p className="mt-2 text-slate-400"> We are preparing trending picks for your next booking.</p>
       </section>
     );
   }
@@ -67,38 +68,64 @@ const HeroCarousel = ({ movies = [], activeIntent = null }) => {
   const heroImage = movie?.backdropPath || movie?.posterPath || "";
 
   return (
-    <section className="reveal-up relative overflow-hidden rounded-3xl border border-cyan-500/30 bg-slate-950">
-      {heroImage ? <img src={heroImage} alt={movie?.title || "Featured movie"} className="absolute inset-0 h-full w-full object-cover" /> : null}
-      <div className="hero-shimmer absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/70 to-slate-950/95" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_15%,rgba(34,211,238,0.2),transparent_34%)]" />
+    <section className="reveal-up relative overflow-hidden rounded-[2.5rem] border border-[#E50914]/20 bg-[#0a0a0b] shadow-2xl min-h-[500px]">
+      <AnimatePresence mode="wait">
+        <motion.div
+           key={activeIndex}
+           initial={{ opacity: 0, scale: 1.1 }}
+           animate={{ opacity: 1, scale: 1 }}
+           exit={{ opacity: 0, scale: 0.95 }}
+           transition={{ duration: 1.2, ease: "anticipate" }}
+           className="absolute inset-0"
+        >
+          {heroImage ? (
+            <img 
+              src={heroImage} 
+              alt={movie?.title || "Featured movie"} 
+              className="h-full w-full object-cover opacity-50 grayscale-[10%] hover:grayscale-0 transition-all duration-1000" 
+            />
+          ) : null}
+        </motion.div>
+      </AnimatePresence>
+      
+      <div className="absolute inset-0 bg-gradient-to-r from-[#0a0a0b] via-[#0a0a0b]/80 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 h-80 bg-gradient-to-t from-[#0a0a0b] to-transparent" />
 
-      <div className="relative z-10 grid gap-8 p-6 md:p-8 lg:grid-cols-[1.35fr_0.65fr]">
-        <div className="space-y-5">
-          <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/40 bg-cyan-500/10 px-3 py-1 text-xs font-medium text-cyan-100">
-            <span>Hot Release</span>
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" />
-            <span>Auto Preview</span>
+      <div className="relative z-20 grid gap-8 p-8 lg:p-14 lg:grid-cols-[1.35fr_0.65fr] items-center min-h-[500px]">
+        <motion.div 
+          key={`content-${activeIndex}`}
+           initial={{ x: -50, opacity: 0 }} 
+           animate={{ x: 0, opacity: 1 }} 
+           transition={{ duration: 0.8, delay: 0.2 }}
+           className="space-y-6"
+        >
+          <div className="inline-flex items-center gap-3 rounded-full border border-[#E50914]/40 bg-[#E50914]/10 px-4 py-1.5 text-[10px] font-black uppercase tracking-[0.3em] text-[#E50914]">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#E50914] animate-ping" />
+            Trending Release
           </div>
 
-          <h1 className="max-w-2xl text-3xl font-semibold leading-tight text-white md:text-5xl">{movie?.title || "Featured Movie"}</h1>
-          <p className="text-sm text-slate-200 md:text-base">
-            <span className="font-medium text-white">Rating {formatRating(movie?.rating)}</span>
-            <span className="mx-2 text-slate-400">|</span>
+          <h1 className="max-w-xl text-5xl font-black leading-tight text-white md:text-7xl tracking-tighter uppercase italic">{movie?.title || "Featured Movie"}</h1>
+          
+          <div className="flex items-center gap-4 text-xs font-bold uppercase tracking-widest text-white/50">
+            <span className="text-[#10b981] drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]">CRITIC {formatRating(movie?.rating)}</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/20" />
             <span>{formatDuration(movie)}</span>
-            <span className="mx-2 text-slate-400">|</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-white/20" />
             <span>{formatGenres(movie)}</span>
-          </p>
+          </div>
 
-          <p className="max-w-xl text-sm leading-7 text-slate-300 md:text-base">{movie?.overview || "No plot summary available yet."}</p>
+          <p className="max-w-lg text-sm leading-relaxed text-white/60 md:text-base font-medium line-clamp-3">{movie?.overview || "Experience the cinematic spectacle on the big screen with Dolby Atmos. Booking now open across all CinemaSync venues."}</p>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-4 pt-4">
             {hasDbId ? (
               <Link to={`/movies/${movieId}`}>
-                <Button className="rounded-xl px-5 py-2.5 text-sm">Book Now</Button>
+                <Button className="rounded-2xl px-8 py-4 bg-[#E50914] text-white font-black hover:bg-[#FF1522] shadow-xl shadow-[#E50914]/20 scale-100 hover:scale-105 transition-all outline-none border-none">
+                  BOOK TICKETS NOW
+                </Button>
               </Link>
             ) : (
-              <Button className="rounded-xl px-5 py-2.5 text-sm" disabled>
-                Book Now
+              <Button className="rounded-2xl px-8 py-4 bg-[#E50914] text-white font-black opacity-50 outline-none border-none" disabled>
+                PREVIEW ONLY
               </Button>
             )}
 
@@ -106,54 +133,65 @@ const HeroCarousel = ({ movies = [], activeIntent = null }) => {
               href={trailerUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center justify-center rounded-xl border border-cyan-300/40 bg-slate-900/40 px-5 py-2.5 text-sm font-medium text-cyan-100 transition hover:bg-cyan-500/15"
+              className="inline-flex items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-8 py-4 text-xs font-black uppercase tracking-widest text-white hover:bg-white/10 transition-all no-underline"
             >
               Watch Trailer
             </a>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 pt-6">
             {slides.map((item, index) => {
               const isActive = activeIndex === index;
               return (
                 <button
                   key={item._id || item.tmdbId || index}
                   type="button"
-                  className={`h-2.5 rounded-full transition ${isActive ? "w-8 bg-cyan-300" : "w-2.5 bg-slate-500/70 hover:bg-slate-300"}`}
+                  className={`h-1.5 rounded-full transition-all duration-500 border-none outline-none cursor-pointer ${isActive ? "w-12 bg-[#E50914]" : "w-4 bg-white/10 hover:bg-white/30"}`}
                   onClick={() => setActiveIndex(index)}
-                  aria-label={`Go to slide ${index + 1}`}
                 />
               );
             })}
           </div>
-        </div>
+        </motion.div>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4 backdrop-blur">
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Smart Insight</p>
-            <p className="mt-2 text-sm font-medium text-white">Best watch window: {getBestTime(movie)}</p>
-            <p className="mt-1 text-sm leading-6 text-slate-300">{getWatchInsight(movie)}</p>
+        <motion.aside 
+          initial={{ opacity: 0, x: 50 }} 
+          animate={{ opacity: 1, x: 0 }} 
+          transition={{ duration: 1, delay: 0.5 }}
+          className="hidden lg:block space-y-6"
+        >
+          <div className="rounded-[2.5rem] border border-white/10 bg-[#1a1a1e]/40 p-6 backdrop-blur-3xl relative overflow-hidden group">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[#E50914]/10 rounded-full blur-3xl -mr-12 -mt-12 group-hover:bg-[#E50914]/20 transition-all" />
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#E50914] mb-3">Live Insights</p>
+            <p className="text-xl font-black text-white italic mb-1 uppercase tracking-tighter">{getBestTime(movie)}</p>
+            <p className="text-[10px] leading-relaxed text-white/40 font-bold uppercase tracking-widest">{getWatchInsight(movie)}</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/70 p-4 backdrop-blur">
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Booking Status</p>
+          <div className="rounded-[2.5rem] border border-white/10 bg-[#1a1a1e]/40 p-6 backdrop-blur-3xl relative overflow-hidden group min-h-[140px] flex flex-col justify-center">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#10b981]/5 rounded-full blur-3xl -mr-16 -mt-16 group-hover:bg-[#10b981]/10 transition-all" />
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#10b981] mb-4 flex items-center gap-2">
+              <span className={`w-1.5 h-1.5 rounded-full ${activeIntent ? "bg-[#10b981] animate-pulse shadow-[0_0_8px_#10b981]" : "bg-white/10"}`} />
+              Sync Engine
+            </p>
             {activeIntent?.show?._id ? (
-              <div className="mt-2 space-y-2">
-                <p className="text-sm text-slate-200">
-                  Continue booking for <span className="font-semibold text-white">{activeIntent.show.movie?.title || "selected movie"}</span>
+              <div className="space-y-4">
+                <p className="text-xs text-white font-black leading-tight uppercase tracking-widest italic">
+                  RESUME: <span className="text-[#E50914]">{activeIntent.show.movie?.title}</span>
                 </p>
                 <Link
                   to={`/booking/${activeIntent.show._id}`}
-                  className="inline-flex rounded-lg border border-cyan-400/40 bg-cyan-500/15 px-3 py-2 text-xs font-medium text-cyan-100 transition hover:bg-cyan-500/25"
+                  className="w-full inline-flex justify-center rounded-xl bg-white text-black px-5 py-3 text-[10px] font-black uppercase tracking-widest hover:bg-[#E50914] hover:text-white transition-all no-underline shadow-xl shadow-white/5 active:scale-95"
                 >
-                  Resume Booking
+                  Return to Show
                 </Link>
               </div>
             ) : (
-              <p className="mt-2 text-sm text-slate-300">No pending bookings. Start with today&apos;s trending list below.</p>
+              <p className="text-[10px] text-white/20 font-black uppercase tracking-[0.2em] leading-relaxed italic">
+                Cloud-Sync Active.<br/>Pick a movie to begin tracking your session.
+              </p>
             )}
           </div>
-        </aside>
+        </motion.aside>
       </div>
     </section>
   );

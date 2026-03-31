@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import Button from "../components/ui/Button";
-import Input from "../components/ui/Input";
+import FloatingInput from "../components/FloatingInput";
+import CinemaBrandPanel from "../components/CinemaBrandPanel";
 import useAuth from "../hooks/useAuth";
-
-const GoogleGlyph = () => (
-  <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
-    <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.2-.9 2.2-1.9 2.9l3 2.3c1.7-1.6 2.7-4 2.7-6.8 0-.7-.1-1.5-.2-2.2H12z" />
-    <path fill="#34A853" d="M12 22c2.4 0 4.5-.8 6-2.1l-3-2.3c-.8.6-1.9 1-3 1-2.3 0-4.2-1.5-4.9-3.6l-3.1 2.4C5.3 20.1 8.4 22 12 22z" />
-    <path fill="#4A90E2" d="M7.1 15c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9L4 8.8C3.4 10 3 11.4 3 13s.4 3 1 4.2L7.1 15z" />
-    <path fill="#FBBC05" d="M12 7.4c1.3 0 2.5.5 3.4 1.3l2.6-2.6C16.5 4.7 14.4 4 12 4 8.4 4 5.3 5.9 4 8.8l3.1 2.4c.7-2.2 2.6-3.8 4.9-3.8z" />
-  </svg>
-);
 
 const LoginPage = () => {
   const navigate = useNavigate();
@@ -19,29 +12,25 @@ const LoginPage = () => {
   const {
     login,
     loginWithGoogle,
-    requestLoginOtp,
-    verifyLoginOtp,
-    resendOtp,
     forgotPassword,
+    verifyForgotPasswordOTP,
     resetPassword,
   } = useAuth();
 
   const [form, setForm] = useState({ email: "", password: "" });
-  const [signInMode, setSignInMode] = useState("password");
+  
+  // Forgot Password Steps: 1=email, 2=otp, 3=newPassword
+  const [forgotStep, setForgotStep] = useState(0); 
   const [otp, setOtp] = useState("");
-  const [otpStage, setOtpStage] = useState(false);
-  const [otpExpiresAt, setOtpExpiresAt] = useState(null);
-  const [otpSeconds, setOtpSeconds] = useState(0);
-  const [deliveryMode, setDeliveryMode] = useState("");
-  const [forgotStage, setForgotStage] = useState("none");
-  const [resetForm, setResetForm] = useState({ email: "", otp: "", newPassword: "" });
+  const [resetToken, setResetToken] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [resetExpiresAt, setResetExpiresAt] = useState(null);
   const [resetSeconds, setResetSeconds] = useState(0);
+
   const [info, setInfo] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [channel, setChannel] = useState("email");
-  const [otpChannel, setOtpChannel] = useState("email");
   const [googleReady, setGoogleReady] = useState(false);
 
   const googleButtonRef = useRef(null);
@@ -52,46 +41,14 @@ const LoginPage = () => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
 
-  const handleResetChange = (field) => (event) => {
-    const value = field === "otp"
-      ? event.target.value.replace(/\D/g, "").slice(0, 6)
-      : event.target.value;
-    setResetForm((prev) => ({ ...prev, [field]: value }));
-  };
-
-  const activateSignInMode = (mode) => {
-    setSignInMode(mode);
-    setOtpStage(false);
-    setOtp("");
-    setOtpExpiresAt(null);
-    setForgotStage("none");
-    setInfo("");
-    setError("");
-  };
-
   const handlePasswordSignIn = async (event) => {
     event.preventDefault();
     setError("");
     setInfo("");
 
-    if (!form.email || !form.password) {
-      setError("Email and password are required");
-      return;
-    }
-
     try {
       setLoading(true);
-      const loginResult = await login({ ...form, channel });
-
-      if (loginResult?.otpRequired) {
-        setOtpStage(true);
-        setOtpChannel(loginResult.channel || channel);
-        setOtpExpiresAt(loginResult.expiresAt);
-        setDeliveryMode(loginResult.deliveryMode || "");
-        setInfo(`Verification code sent via ${loginResult.channel === "phone" ? "phone OTP" : "email OTP"}.`);
-        return;
-      }
-
+      await login(form);
       navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || "Login failed");
@@ -100,154 +57,50 @@ const LoginPage = () => {
     }
   };
 
-  const handleOtpSignInRequest = async (event) => {
-    event.preventDefault();
-    setError("");
-    setInfo("");
-
-    if (!form.email) {
-      setError("Email is required");
-      return;
-    }
-
+  // Forgot Password Flow
+  const handleInitiateForgot = async (e) => {
+    e.preventDefault();
     try {
       setLoading(true);
-      const data = await requestLoginOtp({ email: form.email, channel });
-      setOtpStage(true);
-      setOtpChannel(data.channel || channel);
-      setOtpExpiresAt(data.expiresAt);
-      setDeliveryMode(data.deliveryMode || "");
-      setInfo(`OTP sent via ${data.channel === "phone" ? "phone" : "email"}.`);
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not send OTP");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (event) => {
-    event.preventDefault();
-    setError("");
-    setInfo("");
-
-    if (!/^\d{6}$/.test(otp)) {
-      setError("Enter valid 6-digit OTP");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      await verifyLoginOtp({ email: form.email, otp, channel: otpChannel });
-      navigate(redirectTo, { replace: true });
-    } catch (err) {
-      setError(err.response?.data?.message || "OTP verification failed");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendOtp = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      setInfo("");
-      const data = await resendOtp({
-        email: form.email,
-        purpose: otpChannel === "phone" ? "login_phone" : "login",
-        channel: otpChannel,
-      });
-      setOtpExpiresAt(data.expiresAt);
-      setDeliveryMode(data.deliveryMode || "");
-      setOtp("");
-      setInfo("OTP resent successfully.");
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not resend OTP");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const openForgotPassword = () => {
-    setForgotStage("request");
-    setOtpStage(false);
-    setOtp("");
-    setOtpExpiresAt(null);
-    setResetForm((prev) => ({ ...prev, email: form.email || prev.email }));
-    setError("");
-    setInfo("");
-  };
-
-  const handleForgotPassword = async (event) => {
-    event.preventDefault();
-    setError("");
-    setInfo("");
-
-    if (!resetForm.email) {
-      setError("Email is required");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const data = await forgotPassword({ email: resetForm.email });
-      setResetExpiresAt(data?.expiresAt || null);
-      setForgotStage("verify");
-      setInfo("If your account exists, a reset code is sent to your email.");
-    } catch (err) {
-      setError(err.response?.data?.message || "Could not send reset code");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResendResetOtp = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      const data = await resendOtp({
-        email: resetForm.email,
-        purpose: "password_reset",
-        channel: "email",
-      });
+      const data = await forgotPassword({ email: form.email });
       setResetExpiresAt(data.expiresAt);
-      setResetForm((prev) => ({ ...prev, otp: "" }));
-      setInfo("Reset code resent successfully.");
+      setForgotStep(2);
+      setInfo("Reset code sent to your email.");
     } catch (err) {
-      setError(err.response?.data?.message || "Could not resend reset code");
+      setError(err.response?.data?.message || "Request failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResetPassword = async (event) => {
-    event.preventDefault();
-    setError("");
-    setInfo("");
-
-    if (!resetForm.email || !/^\d{6}$/.test(resetForm.otp) || !resetForm.newPassword) {
-      setError("Email, valid 6-digit code and new password are required");
-      return;
-    }
-    if (resetForm.newPassword.length < 6) {
-      setError("New password must be at least 6 characters");
-      return;
-    }
-
+  const handleVerifyResetOtp = async (e) => {
+    e.preventDefault();
     try {
       setLoading(true);
-      await resetPassword({
-        email: resetForm.email,
-        otp: resetForm.otp,
-        newPassword: resetForm.newPassword,
-      });
-      setForgotStage("none");
-      setSignInMode("password");
-      setForm((prev) => ({ ...prev, email: resetForm.email, password: "" }));
-      setResetForm({ email: resetForm.email, otp: "", newPassword: "" });
-      setResetExpiresAt(null);
-      setInfo("Password reset successful. Please sign in.");
+      const data = await verifyForgotPasswordOTP({ email: form.email, otp });
+      setResetToken(data.resetToken);
+      setForgotStep(3);
+      setInfo("Code verified. Enter your new password.");
     } catch (err) {
-      setError(err.response?.data?.message || "Password reset failed");
+      setError(err.response?.data?.message || "Invalid code");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFinalReset = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    try {
+      setLoading(true);
+      await resetPassword({ resetToken, newPassword });
+      setForgotStep(0);
+      setInfo("Password updated. Please sign in.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Reset failed");
     } finally {
       setLoading(false);
     }
@@ -255,15 +108,8 @@ const LoginPage = () => {
 
   const handleGoogleSuccess = useCallback(async (credentialResponse) => {
     const token = credentialResponse?.credential;
-    if (!token) {
-      setError("Google did not return an ID token. Please try again.");
-      return;
-    }
-
     try {
       setLoading(true);
-      setError("");
-      setInfo("");
       await loginWithGoogle(token);
       navigate(redirectTo, { replace: true });
     } catch (err) {
@@ -274,271 +120,128 @@ const LoginPage = () => {
   }, [loginWithGoogle, navigate, redirectTo]);
 
   useEffect(() => {
-    if (!googleClientId || otpStage || forgotStage !== "none") return undefined;
-
+    if (!googleClientId || forgotStep !== 0) return;
     const initializeGoogle = () => {
-      const googleApi = window.google?.accounts?.id;
-      if (!googleApi || !googleButtonRef.current) return;
-
-      googleApi.initialize({
+      if (!window.google || !googleButtonRef.current) return;
+      window.google.accounts.id.initialize({
         client_id: googleClientId,
         callback: handleGoogleSuccess,
       });
-
-      googleButtonRef.current.innerHTML = "";
-      googleApi.renderButton(googleButtonRef.current, {
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        width: 320,
+      window.google.accounts.id.renderButton(googleButtonRef.current, {
+        theme: "outline", size: "large", text: "continue_with", shape: "pill", width: 320,
       });
-
       setGoogleReady(true);
     };
-
-    if (window.google?.accounts?.id) {
-      initializeGoogle();
-      return undefined;
-    }
-
     const script = document.createElement("script");
     script.src = "https://accounts.google.com/gsi/client";
     script.async = true;
-    script.defer = true;
     script.onload = initializeGoogle;
-    script.onerror = () => setError("Failed to load Google Sign-In. Please retry.");
     document.head.appendChild(script);
-
-    return () => {
-      script.onload = null;
-      script.onerror = null;
-    };
-  }, [googleClientId, handleGoogleSuccess, otpStage, forgotStage]);
+  }, [googleClientId, handleGoogleSuccess, forgotStep]);
 
   useEffect(() => {
-    if (!otpExpiresAt) {
-      setOtpSeconds(0);
-      return undefined;
-    }
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((new Date(otpExpiresAt).getTime() - Date.now()) / 1000));
-      setOtpSeconds(remaining);
+    const timer = setInterval(() => {
+      if (resetExpiresAt) {
+        setResetSeconds(Math.max(0, Math.floor((new Date(resetExpiresAt).getTime() - Date.now()) / 1000)));
+      }
     }, 1000);
-
-    return () => clearInterval(interval);
-  }, [otpExpiresAt]);
-
-  useEffect(() => {
-    if (!resetExpiresAt) {
-      setResetSeconds(0);
-      return undefined;
-    }
-
-    const interval = setInterval(() => {
-      const remaining = Math.max(0, Math.floor((new Date(resetExpiresAt).getTime() - Date.now()) / 1000));
-      setResetSeconds(remaining);
-    }, 1000);
-
-    return () => clearInterval(interval);
+    return () => clearInterval(timer);
   }, [resetExpiresAt]);
 
   return (
-    <section className="mx-auto mt-8 w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-6 shadow-xl shadow-black/30">
-      <div className="mb-5 space-y-1">
-        <h1 className="text-2xl font-semibold text-white">Welcome back</h1>
-        <p className="text-sm text-slate-400">Sign in to continue your CinemaSync booking flow</p>
+    <div className="min-h-screen flex bg-[#1A1A2E]">
+      <div className="hidden lg:flex w-1/2 items-center justify-center bg-gradient-to-br from-[#1A1A2E] via-[#16213E] to-[#0F3460] relative overflow-hidden border-r border-white/5">
+        <CinemaBrandPanel />
       </div>
 
-      {forgotStage === "none" && !otpStage ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-700 bg-slate-950/50 p-1 text-xs">
-            <button
-              type="button"
-              className={`rounded-md px-2 py-2 transition ${signInMode === "password" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-              onClick={() => activateSignInMode("password")}
-            >
-              Password
-            </button>
-            <button
-              type="button"
-              className={`rounded-md px-2 py-2 transition ${signInMode === "otp" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-              onClick={() => activateSignInMode("otp")}
-            >
-              Sign in via OTP
-            </button>
+      <div className="w-full lg:w-1/2 flex items-center justify-center p-8">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl"
+        >
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-white mb-2">Welcome Back</h2>
+            <p className="text-white/50 text-sm">Sign in to continue your CinemaSync journey</p>
           </div>
 
-          <form className="space-y-4" onSubmit={signInMode === "password" ? handlePasswordSignIn : handleOtpSignInRequest}>
-            <Input label="Email" type="email" value={form.email} onChange={handleChange("email")} placeholder="you@example.com" />
-            {signInMode === "password" ? (
-              <Input label="Password" type="password" value={form.password} onChange={handleChange("password")} placeholder="Enter password" />
-            ) : null}
+          <AnimatePresence mode="wait">
+            {forgotStep === 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                {googleClientId ? (
+                  <div className="space-y-4 mb-6">
+                    <div ref={googleButtonRef} className="w-full flex justify-center" />
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 h-px bg-white/10" />
+                      <span className="text-white/30 text-xs font-bold uppercase tracking-wider">OR</span>
+                      <div className="flex-1 h-px bg-white/10" />
+                    </div>
+                  </div>
+                ) : null}
 
-            <div className="rounded-lg border border-slate-700 bg-slate-950/50 p-3">
-              <p className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">Receive OTP via</p>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <button
-                  type="button"
-                  className={`rounded-md px-2 py-2 transition ${channel === "email" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-                  onClick={() => setChannel("email")}
-                >
-                  Email OTP
-                </button>
-                <button
-                  type="button"
-                  className={`rounded-md px-2 py-2 transition ${channel === "phone" ? "bg-cyan-500/20 text-cyan-100" : "text-slate-300 hover:bg-slate-800"}`}
-                  onClick={() => setChannel("phone")}
-                >
-                  Phone OTP
-                </button>
-              </div>
-            </div>
+                <form onSubmit={handlePasswordSignIn} className="space-y-4">
+                  <FloatingInput label="Email Address" type="email" value={form.email} onChange={handleChange("email")} required />
+                  <FloatingInput label="Password" type="password" value={form.password} onChange={handleChange("password")} required />
+                  
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-2">
+                      <input type="checkbox" className="accent-[#E50914]" />
+                      <span className="text-white/40 text-xs">Stay signed in</span>
+                    </div>
+                    <button type="button" onClick={() => setForgotStep(1)} className="text-[#E50914] text-xs font-bold hover:underline">Forgot password?</button>
+                  </div>
 
-            <Button type="submit" loading={loading} className="w-full">
-              {signInMode === "password" ? "Sign In" : "Send OTP"}
-            </Button>
-          </form>
+                  <button type="submit" disabled={loading} className="w-full mt-6 py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#E50914] to-[#B00000] hover:from-[#FF1522] hover:to-[#E50914] transition-all shadow-lg hover:shadow-red-500/20 hover:scale-[1.02] active:scale-[0.98]">
+                    {loading ? "Processing..." : "Sign In"}
+                  </button>
+                </form>
+              </motion.div>
+            )}
 
-          <button
-            type="button"
-            className="text-sm text-cyan-300 hover:text-cyan-200"
-            onClick={openForgotPassword}
-          >
-            Forgot password?
-          </button>
+            {forgotStep > 0 && (
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
+                 {forgotStep === 1 && (
+                   <form onSubmit={handleInitiateForgot} className="space-y-6">
+                     <h3 className="text-xl font-bold text-white">Recover Password</h3>
+                     <p className="text-white/50 text-sm">Enter the email associated with your account.</p>
+                     <FloatingInput label="Email Address" type="email" value={form.email} onChange={handleChange("email")} required />
+                     <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#E50914] to-[#B00000]">Get Reset Code</button>
+                     <button type="button" onClick={() => setForgotStep(0)} className="w-full text-white/30 text-xs font-bold">Cancel</button>
+                   </form>
+                 )}
+                 {forgotStep === 2 && (
+                   <form onSubmit={handleVerifyResetOtp} className="space-y-6">
+                     <h3 className="text-xl font-bold text-white">Verify Reset Code</h3>
+                     <p className="text-white/50 text-sm">Enter the 6-digit code sent to your email.</p>
+                     <FloatingInput label="Security Code" value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))} required />
+                     <div className="text-xs text-white/40">Expires in: {Math.floor(resetSeconds / 60)}:{String(resetSeconds % 60).padStart(2, "0")}</div>
+                     <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#E50914] to-[#B00000]">Verify Code</button>
+                   </form>
+                 )}
+                 {forgotStep === 3 && (
+                   <form onSubmit={handleFinalReset} className="space-y-6">
+                     <h3 className="text-xl font-bold text-white">Set New Password</h3>
+                     <p className="text-white/50 text-sm">Choose a strong password for your account.</p>
+                     <FloatingInput label="New Password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required />
+                     <FloatingInput label="Confirm New Password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
+                     <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#E50914] to-[#B00000]">Update Password</button>
+                   </form>
+                 )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <div className="flex items-center gap-3 text-xs uppercase tracking-[0.2em] text-slate-500">
-            <span className="h-px flex-1 bg-slate-700" />
-            <span>or</span>
-            <span className="h-px flex-1 bg-slate-700" />
-          </div>
+          {error && <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-bold flex gap-2 animate-shake">⚠ {error}</div>}
+          {info && <div className="mt-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-bold flex gap-2">✓ {info}</div>}
 
-          {googleClientId ? (
-            <div className="rounded-xl border border-slate-700 bg-slate-950/60 p-3">
-              <div className="mb-3 flex items-center gap-2 text-sm text-slate-200">
-                <GoogleGlyph />
-                <span>Continue with Google</span>
-              </div>
-              <div ref={googleButtonRef} className="flex justify-center rounded-lg border border-slate-700/80 bg-white/95 py-2" />
-              {!googleReady ? <p className="mt-2 text-center text-xs text-slate-500">Loading Google Sign-In...</p> : null}
-            </div>
-          ) : (
-            <p className="rounded-lg border border-dashed border-slate-700 p-3 text-xs text-slate-400">
-              Add <code>VITE_GOOGLE_CLIENT_ID</code> in frontend env to enable Google Sign-In.
+          {forgotStep === 0 && (
+            <p className="mt-8 text-center text-sm text-white/40">
+              New to CinemaSync? <Link to="/register" className="text-[#E50914] font-bold hover:underline ml-1">Create Account</Link>
             </p>
           )}
-        </div>
-      ) : null}
-
-      {otpStage ? (
-        <form className="space-y-4" onSubmit={handleVerifyOtp}>
-          <p className="text-sm text-slate-300">
-            Enter OTP sent to {otpChannel === "phone" ? "your registered phone number" : form.email}
-          </p>
-          {deliveryMode && !["smtp", "twilio", "fast2sms"].includes(deliveryMode) ? (
-            <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-2 text-xs text-amber-200">
-              Delivery mode: {deliveryMode}
-            </p>
-          ) : null}
-          <Input
-            label="6-digit OTP"
-            value={otp}
-            onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="123456"
-            maxLength={6}
-          />
-          <p className="text-xs text-slate-400">OTP expires in: {Math.floor(otpSeconds / 60)}:{String(otpSeconds % 60).padStart(2, "0")}</p>
-
-          <div className="flex gap-3">
-            <Button type="submit" loading={loading} className="w-full">
-              Verify OTP
-            </Button>
-            <Button type="button" variant="secondary" loading={loading} onClick={handleResendOtp}>
-              Resend
-            </Button>
-          </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            className="w-full"
-            onClick={() => {
-              setOtpStage(false);
-              setOtp("");
-              setOtpExpiresAt(null);
-              setInfo("");
-              setError("");
-            }}
-          >
-            Back to sign in
-          </Button>
-        </form>
-      ) : null}
-
-      {forgotStage === "request" ? (
-        <form className="space-y-4" onSubmit={handleForgotPassword}>
-          <p className="text-sm text-slate-300">Enter your email to receive a password reset code</p>
-          <Input
-            label="Email"
-            type="email"
-            value={resetForm.email}
-            onChange={handleResetChange("email")}
-            placeholder="you@example.com"
-          />
-          <div className="flex gap-3">
-            <Button type="submit" loading={loading} className="w-full">
-              Send reset code
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => setForgotStage("none")} className="w-full">
-              Back
-            </Button>
-          </div>
-        </form>
-      ) : null}
-
-      {forgotStage === "verify" ? (
-        <form className="space-y-4" onSubmit={handleResetPassword}>
-          <p className="text-sm text-slate-300">Enter the code sent to {resetForm.email}</p>
-          <Input
-            label="Reset code"
-            value={resetForm.otp}
-            onChange={handleResetChange("otp")}
-            placeholder="123456"
-            maxLength={6}
-          />
-          <Input
-            label="New password"
-            type="password"
-            value={resetForm.newPassword}
-            onChange={handleResetChange("newPassword")}
-            placeholder="Minimum 6 characters"
-          />
-          <p className="text-xs text-slate-400">
-            Code expires in: {Math.floor(resetSeconds / 60)}:{String(resetSeconds % 60).padStart(2, "0")}
-          </p>
-          <div className="flex gap-3">
-            <Button type="submit" loading={loading} className="w-full">
-              Reset password
-            </Button>
-            <Button type="button" variant="secondary" loading={loading} onClick={handleResendResetOtp}>
-              Resend
-            </Button>
-          </div>
-          <Button type="button" variant="ghost" className="w-full" onClick={() => setForgotStage("none")}>
-            Back to sign in
-          </Button>
-        </form>
-      ) : null}
-
-      {error ? <p className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p> : null}
-      {info ? <p className="mt-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">{info}</p> : null}
-
-      <p className="mt-4 text-sm text-slate-400">
-        New here? <Link to="/register" className="text-cyan-300 hover:text-cyan-200">Create account</Link>
-      </p>
-    </section>
+        </motion.div>
+      </div>
+    </div>
   );
 };
 

@@ -14,7 +14,6 @@ import DashboardPage from "../pages/DashboardPage";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import ManageShows from "../pages/admin/ManageShows";
 import ManageMovies from "../pages/admin/ManageMovies";
-import TicketScannerPage from "../pages/admin/TicketScannerPage";
 
 const AppRoutes = () => (
   <Routes>
@@ -70,14 +69,6 @@ const AppRoutes = () => (
       element={
         <AdminRoute>
           <AdminDashboard />
-        </AdminRoute>
-      }
-    />
-    <Route
-      path="/admin/scanner"
-      element={
-        <AdminRoute>
-          <TicketScannerPage />
         </AdminRoute>
       }
     />

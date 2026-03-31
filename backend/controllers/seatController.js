@@ -27,8 +27,21 @@ const getSeatsByShow = async (req, res, next) => {
     if (!show || show.status !== "active") throw new ApiError(404, "Active show not found");
 
     await releaseExpiredLocks(showId);
+    const now = new Date();
     const seats = await Seat.find({ show: showId }).sort({ row: 1, number: 1 }).lean();
-    res.json(new ApiResponse(200, seats, "Seats fetched"));
+    
+    // Add isMine property for refresh persistence/resume
+    const enhancedSeats = seats.map(seat => {
+      const isMine = !!(
+        req.user && 
+        seat.status === "locked" && 
+        String(seat.lockedBy) === String(req.user._id) &&
+        seat.lockedUntil > now
+      );
+      return { ...seat, isMine };
+    });
+
+    res.json(new ApiResponse(200, enhancedSeats, "Seats fetched"));
   } catch (error) {
     next(error);
   }

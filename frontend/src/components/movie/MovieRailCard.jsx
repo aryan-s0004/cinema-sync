@@ -33,11 +33,18 @@ const MovieRailCard = ({ movie, inWatchlist = false, onToggleWatchlist }) => {
           <img
             src={movie.posterPath}
             alt={movie?.title || "Movie poster"}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+            className="h-full w-full object-cover transition duration-700 group-hover:scale-110"
             loading="lazy"
           />
         ) : (
-          <div className="grid h-full place-items-center text-slate-500">No Poster</div>
+          <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-gradient-to-br from-slate-800 to-slate-900 border-b border-white/5">
+             <div className="absolute top-0 left-0 w-full h-[2px] bg-[#E50914] opacity-40 shadow-[0_0_10px_#E50914]" />
+             <p className="text-[10px] font-black text-white/5 uppercase tracking-[0.5em] mb-4">CinemaSync Exclusive</p>
+             <h4 className="text-[13px] font-black text-white/20 italic uppercase tracking-tighter leading-tight line-clamp-3">{movie?.title || "Unlimited Premiere"}</h4>
+             <div className="mt-6 w-10 h-10 rounded-full bg-white/2 flex items-center justify-center border border-white/5">
+                <span className="text-white/10 text-[8px] font-black">CS</span>
+             </div>
+          </div>
         )}
 
         <div className="absolute left-3 top-3 rounded-full bg-slate-950/80 px-2 py-1 text-xs font-medium text-amber-300">

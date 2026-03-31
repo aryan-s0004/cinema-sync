@@ -4,6 +4,7 @@ const {
   loginUser,
   requestLoginOtp,
   forgotPassword,
+  verifyForgotPasswordOTP,
   resetPassword,
   verifyLoginOtp,
   verifyAccountOtp,
@@ -25,6 +26,7 @@ const {
   loginOtpRequestValidator,
   refreshValidator,
   forgotPasswordValidator,
+  verifyForgotPasswordOTPValidator,
   resetPasswordValidator,
   otpVerifyValidator,
   otpResendValidator,
@@ -48,6 +50,7 @@ router.post("/login/verify-otp", validateRequest({ body: otpVerifyValidator }), 
 router.post("/verify-account-otp", validateRequest({ body: otpVerifyValidator }), verifyAccountOtp);
 router.post("/otp/resend", validateRequest({ body: otpResendValidator }), resendOtp);
 router.post("/password/forgot", validateRequest({ body: forgotPasswordValidator }), forgotPassword);
+router.post("/password/verify-otp", validateRequest({ body: verifyForgotPasswordOTPValidator }), verifyForgotPasswordOTP);
 router.post("/password/reset", validateRequest({ body: resetPasswordValidator }), resetPassword);
 router.post("/refresh", validateRequest({ body: refreshValidator }), refreshAccessToken);
 router.get("/me", protect, getMe);

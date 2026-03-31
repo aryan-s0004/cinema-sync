@@ -116,6 +116,7 @@ export const AuthProvider = ({ children }) => {
       resendOtp: authApi.resendOtp,
       verifyAccountOtp: authApi.verifyAccountOtp,
       forgotPassword: authApi.forgotPassword,
+      verifyForgotPasswordOTP: authApi.verifyForgotPasswordOTP,
       resetPassword: authApi.resetPassword,
       logout
     }),

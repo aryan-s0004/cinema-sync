@@ -198,7 +198,7 @@ const registerUser = async (req, res, next) => {
     user.refreshToken = refreshToken;
     const otpData = await setUserOtp(user, "email_verification");
 
-    sendAccountCreatedEmail({ to: user.email, name: user.name }).catch(() => {});
+    sendAccountCreatedEmail({ to: user.email, name: user.name }).catch((err) => console.error("[Auth] Welcome email failed:", err.message));
     const otpDelivery = await sendOtpEmail({
       to: user.email,
       name: user.name,
@@ -237,12 +237,8 @@ const registerUser = async (req, res, next) => {
 const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const channel = String(req.body?.channel || "email").trim().toLowerCase();
     if (!email || !password) {
       throw new ApiError(400, "Email and password are required");
-    }
-    if (!["email", "phone"].includes(channel)) {
-      throw new ApiError(400, "channel must be email or phone");
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
@@ -258,12 +254,29 @@ const loginUser = async (req, res, next) => {
       throw new ApiError(401, "Invalid credentials");
     }
 
-    const otpPayload = await sendOtpForUser({ user, channel, purpose: "login" });
+    const accessToken = signAccessToken(user._id);
+    const refreshToken = signRefreshToken(user._id);
+    user.refreshToken = refreshToken;
+    await user.save();
+
+    sendLoginAlertEmail({
+      to: user.email,
+      name: user.name,
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      loginAt: new Date().toISOString(),
+    }).catch((err) => console.error("[Auth] Login alert email failed:", err.message));
+
     res.json(
-      new ApiResponse(200, {
-        otpRequired: true,
-        ...otpPayload,
-      }, `OTP sent for ${channel} login verification`)
+      new ApiResponse(
+        200,
+        {
+          user: mapUserAuthPayload(user),
+          accessToken,
+          refreshToken,
+        },
+        "Login successful"
+      )
     );
   } catch (error) {
     next(error);
@@ -327,7 +340,7 @@ const verifyLoginOtp = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
       loginAt: new Date().toISOString(),
-    }).catch(() => {});
+    }).catch((err) => console.error("[Auth] Login alert email failed:", err.message));
 
     res.json(
       new ApiResponse(
@@ -403,21 +416,54 @@ const forgotPassword = async (req, res, next) => {
   }
 };
 
-const resetPassword = async (req, res, next) => {
+const verifyForgotPasswordOTP = async (req, res, next) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, otp } = req.body;
     const user = await User.findOne({ email: email.toLowerCase() });
-
     if (!user) {
       throw new ApiError(404, "User not found");
     }
-    if (user.authProvider === "google" && user.googleId) {
-      throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
-    }
 
     await verifyStoredOtp({ user, otp, purpose: "password_reset", field: "otp" });
-    user.otp = emptyOtpState();
+
+    // Generate a long, random reset token
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    // Hash it for DB storage
+    user.passwordResetToken = hashOtp(resetToken);
+    // Token is valid for 10 minutes
+    user.passwordResetExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+    // Clear the OTP
+    await clearUserOtp(user, "otp");
+    await user.save();
+
+    res.json(new ApiResponse(200, { resetToken }, "OTP verified. Proceed to update password."));
+  } catch (error) {
+    next(error);
+  }
+};
+
+const resetPassword = async (req, res, next) => {
+  try {
+    const { resetToken, newPassword } = req.body;
+
+    if (!resetToken || !newPassword) {
+      throw new ApiError(400, "resetToken and newPassword are required");
+    }
+
+    const hashedToken = hashOtp(resetToken);
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpiry: { $gt: new Date() },
+    });
+
+    if (!user) {
+      throw new ApiError(400, "Reset token is invalid or has expired");
+    }
+
     user.password = newPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpiry = null;
     user.refreshToken = null;
     await user.save();
 
@@ -700,6 +746,7 @@ module.exports = {
   googleAuth,
   verifyLoginOtp,
   verifyAccountOtp,
+  verifyForgotPasswordOTP,
   resendOtp,
   getEmailHealth,
   getSmsHealth,

@@ -109,7 +109,7 @@ const forgotPasswordValidator = (body) => {
   return { value: { email: normalizedEmail } };
 };
 
-const resetPasswordValidator = (body) => {
+const verifyForgotPasswordOTPValidator = (body) => {
   const normalizedEmail = normalizeEmail(body.email);
   if (!normalizedEmail || !normalizedEmail.includes("@")) {
     return { error: "Valid email is required" };
@@ -120,6 +120,15 @@ const resetPasswordValidator = (body) => {
     return { error: "otp must be a 6-digit code" };
   }
 
+  return { value: { email: normalizedEmail, otp } };
+};
+
+const resetPasswordValidator = (body) => {
+  const resetToken = String(body.resetToken || "").trim();
+  if (!isNonEmptyString(resetToken)) {
+    return { error: "resetToken is required" };
+  }
+
   const newPassword = String(body.newPassword || "");
   if (!isNonEmptyString(newPassword) || newPassword.length < 6) {
     return { error: "newPassword must be at least 6 characters" };
@@ -127,8 +136,7 @@ const resetPasswordValidator = (body) => {
 
   return {
     value: {
-      email: normalizedEmail,
-      otp,
+      resetToken,
       newPassword,
     },
   };
@@ -169,6 +177,7 @@ module.exports = {
   refreshValidator,
   forgotPasswordValidator,
   resetPasswordValidator,
+  verifyForgotPasswordOTPValidator,
   otpVerifyValidator,
   otpResendValidator,
   googleAuthValidator,

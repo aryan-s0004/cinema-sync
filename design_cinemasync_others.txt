@@ -1,0 +1,65 @@
+### 🎥 CINEMASYNC: THE ULTIMATE MASTER DESIGN PROMPT ###
+
+This document is a comprehensive design and architecture blueprint for rebuilding or extending CinemaSync with high-end, premium aesthetics and robust functionality.
+
+----------------------------------------------------------------------
+1. DESIGN PHILOSOPHY (VISUAL IDENTITY)
+----------------------------------------------------------------------
+- Theme: "Ultra-Premium Dark Cinematic Experience".
+- Primary Color: Netflix Red (#E50914) with Radiant Emerald (#10B981) for Success.
+- Typography: Outfit (Primary), JetBrains Mono (For Transaction IDs/Price).
+- Aesthetics: 
+  - Glassmorphism: (background-blur: 40px; border: 1px solid rgba(255,255,255,0.08)).
+  - Micro-Animations: Framer Motion for card reveals (reveal-up, scale-95-to-100).
+  - High-Trust UI: Glowing secure indicators, live validation success ticks.
+
+----------------------------------------------------------------------
+2. CORE FUNCTIONALITY (THE 5 PILLARS)
+----------------------------------------------------------------------
+A. FLEXIBLE AUTHENTICATION:
+   - Logic: Three-way entry (Google One-Tap, Email/Password, or OTP-Only).
+   - Recovery: Secure 3-step Password Reset (Forgot -> OTP -> New Password with short-lived tokens).
+   - Gmail Integration: Primary alerts and OTPs sent from "aryancoder999@gmail.com".
+
+B. REAL-TIME BOOKING ENGINE:
+   - Interface: SVG-based seat selection (Diamond, Gold, Silver zones).
+   - Optimization: Debounced searching, optimistic seat locking.
+
+C. THE SMART CINEMAGATEWAY (STRIPE):
+   - Scope: Cards, UPI, and Netbanking support.
+   - Failover: Robust error messages emphasizing "automatic refund in 5-7 days".
+   - Admin Alerts: Real-time email notification to admin upon every successful INR capture.
+
+D. DYNAMIC DISCOVERY:
+   - UI: High-performance movie sliders (Hero Carousel) with rating badges and genre tags.
+   - Watchlist: Context-driven persistence across user sessions.
+
+E. DIGITAL TICKETING:
+   - Generation: Dynamic PDF ticket with encrypted QR code.
+   - UI: Digital e-ticket animation on the success page with a unique transactional ID.
+
+----------------------------------------------------------------------
+3. FRONTEND ARCHITECTURE (VITE/REACT)
+----------------------------------------------------------------------
+- Component Pattern: Atoms (Buttons, Inputs), Molecules (Movie Cards, User Menu), Organisms (Booking Modal).
+- State: AuthContext (Security/Identity), AppContext (Watchlist/Global Cache).
+- Routing: Protected routes for Checkout, Dashboard, and Admin panels.
+
+----------------------------------------------------------------------
+4. BACKEND ARCHITECTURE (NODE/EXPRESS/MONGO)
+----------------------------------------------------------------------
+- Controllers: Modular (Auth, Booking, Payment, Theater).
+- Middlewares: Auth (JWT), ErrorHandler (ApiError), Logger (Morgan), RateLimiter.
+- Security: Helmet, CORS (White-listed origins), JWT Refresh Rotation.
+
+----------------------------------------------------------------------
+5. PROMPT FOR DEVELOPERS (REPLICATION)
+----------------------------------------------------------------------
+"Build a movie booking platform using MERN stack with a design that rivals Netflix and BookMyShow. Use Stripe for local and international payments (UPI included). Implement Google login alongside an OTP-based email verification system. Focus on visual excellence using Framer Motion for all transitions and glassmorphism for background elements. Ensure the backend handles seat occupancy with idempotency and sends real-time PDF tickets with QR codes upon payment."
+
+----------------------------------------------------------------------
+6. TECH STACK SUMMARY
+----------------------------------------------------------------------
+- Frontend: Vite, React 18, Framer Motion, TailwindCSS/Vanilla CSS.
+- Backend: Node.js, Express, MongoDB/Mongoose, Stripe SDK, Nodemailer.
+- Cloud: Google GCP (Google Auth), CloudRun (Optional Deployment).

@@ -12,7 +12,7 @@ const showRoutes = require("./routes/showRoutes");
 const seatRoutes = require("./routes/seatRoutes");
 const bookingRoutes = require("./routes/bookingRoutes");
 const bookingIntentRoutes = require("./routes/bookingIntentRoutes");
-const paymentRoutes = require("./routes/paymentRoutes");
+const stripeRoutes = require("./routes/stripeRoutes");
 const recommendRoutes = require("./routes/recommendRoutes");
 const ticketRoutes = require("./routes/ticketRoutes");
 
@@ -47,7 +47,17 @@ app.use(
   })
 );
 app.use(helmet());
-app.use(express.json({ limit: "100kb" }));
+app.use(
+  express.json({
+    limit: "100kb",
+    verify: (req, _res, buf) => {
+      // Capture raw body for Stripe webhook signature verification
+      if (req.originalUrl.includes("/webhook/stripe")) {
+        req.rawBody = buf;
+      }
+    },
+  })
+);
 app.use(requestId);
 app.use(sanitizeRequest);
 app.use(rateLimiter);
@@ -72,7 +82,7 @@ app.use("/api/shows", showRoutes);
 app.use("/api/seats", seatRoutes);
 app.use("/api/bookings", bookingRoutes);
 app.use("/api/booking-intents", bookingIntentRoutes);
-app.use("/api/payments", paymentRoutes);
+app.use("/api/payments", stripeRoutes);
 app.use("/api/recommend", recommendRoutes);
 app.use("/api/tickets", ticketRoutes);
 
