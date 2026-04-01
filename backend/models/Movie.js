@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const movieSchema = new mongoose.Schema(
   {
     tmdbId: { type: Number, unique: true, sparse: true },
+    providerSource: { type: String, default: "database", trim: true },
+    providerMovieId: { type: String, default: null, trim: true },
     title: { type: String, required: true, trim: true },
     overview: { type: String, default: "" },
     language: { type: String, default: "en" },
@@ -19,6 +21,7 @@ const movieSchema = new mongoose.Schema(
 );
 
 movieSchema.index({ isActive: 1, popularity: -1, createdAt: -1 });
+movieSchema.index({ providerSource: 1, providerMovieId: 1 }, { sparse: true });
 movieSchema.index({ title: "text" });
 
 module.exports = mongoose.model("Movie", movieSchema);

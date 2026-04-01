@@ -1,10 +1,19 @@
 const ApiError = require("../utils/ApiError");
 
-const validateRequest = (schema = {}) => (req, _res, next) => {
+const normalizeSchema = (schema, legacyPart) => {
+  if (typeof schema === "function") {
+    return { [legacyPart || "body"]: schema };
+  }
+
+  return schema || {};
+};
+
+const validateRequest = (schema = {}, legacyPart = null) => (req, _res, next) => {
+  const normalizedSchema = normalizeSchema(schema, legacyPart);
   const errors = [];
 
   for (const part of ["params", "query", "body"]) {
-    const validator = schema[part];
+    const validator = normalizedSchema[part];
     if (!validator) continue;
 
     const result = validator(req[part] || {});

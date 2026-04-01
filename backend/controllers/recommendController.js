@@ -1,8 +1,9 @@
 const Movie = require("../models/Movie");
 const Booking = require("../models/Booking");
 const ApiResponse = require("../utils/ApiResponse");
-const { discoverMoviesByGenreName } = require("../services/tmdbService");
 const { getCache, setCache } = require("../services/cacheService");
+const movieProviderConfig = require("../config/movieProvider");
+const { ensureMovieCatalog } = require("../services/movieProviderService");
 
 const moodToGenre = {
   happy: "Comedy",
@@ -84,15 +85,28 @@ const recommendMovies = async (req, res, next) => {
       aiGenre || genre || moodToGenre[(mood || "").toLowerCase()] || historyGenre || "Action"
     ).trim();
 
-    let recommendations = [];
-    if (process.env.TMDB_API_KEY) {
-      try {
-        recommendations = await discoverMoviesByGenreName(selectedGenre);
-      } catch (_tmdbErr) {
-        recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10).lean();
-      }
-    } else {
-      recommendations = await Movie.find({ isActive: true }).sort({ rating: -1, popularity: -1 }).limit(10).lean();
+    await ensureMovieCatalog({ minimumCount: 12, pages: 2, perPage: 20 });
+
+    let recommendations = await Movie.find({
+      isActive: true,
+      ...(selectedGenre
+        ? {
+            $or: [
+              { genres: { $in: [selectedGenre] } },
+              { title: { $regex: selectedGenre, $options: "i" } },
+            ],
+          }
+        : {}),
+    })
+      .sort({ rating: -1, popularity: -1, createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    if (!recommendations.length) {
+      recommendations = await Movie.find({ isActive: true })
+        .sort({ rating: -1, popularity: -1, createdAt: -1 })
+        .limit(10)
+        .lean();
     }
 
     const payload = {
@@ -100,7 +114,7 @@ const recommendMovies = async (req, res, next) => {
       selectedGenre,
       reason: historyGenre
         ? `Personalized using your recent booking preferences (${historyGenre})`
-        : "Based on trending and selected genre",
+        : `Based on ${movieProviderConfig.provider} catalog and selected genre`,
       recommendations,
     };
 

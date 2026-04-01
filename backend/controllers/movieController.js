@@ -1,9 +1,10 @@
 const Movie = require("../models/Movie");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-const { fetchPopularMovies, fetchMovieDetails, mapTmdbMovie } = require("../services/tmdbService");
 const { getCache, setCache, clearCache } = require("../services/cacheService");
 const { parsePositiveInt } = require("../validators/common");
+const movieProviderConfig = require("../config/movieProvider");
+const { fetchTrendingMovies, refreshMovieDetails } = require("../services/movieProviderService");
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -24,6 +25,7 @@ const getAllMovies = async (req, res, next) => {
       Movie.countDocuments(filter),
     ]);
 
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     res.json(
       new ApiResponse(200, movies, "Movies fetched", {
         page,
@@ -41,52 +43,19 @@ const getTrendingMovies = async (req, res, next) => {
   try {
     const page = parsePositiveInt(req.query.page, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit, 20), 20);
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
     const cacheKey = `movies:trending:${page}:${limit}`;
     const cached = getCache(cacheKey);
     if (cached) {
       return res.json(new ApiResponse(200, cached, "Trending movies fetched (cached)"));
     }
 
-    if (!process.env.TMDB_API_KEY) {
-      const fallback = await Movie.find({ isActive: true }).sort({ popularity: -1, createdAt: -1 }).limit(limit).lean();
-      setCache(cacheKey, fallback, 30_000);
-      return res.json(new ApiResponse(200, fallback, "TMDB key missing, returning DB movies"));
-    }
-
-    try {
-      const tmdbMovies = await fetchPopularMovies(page);
-      if (!tmdbMovies.length) {
-        const fallback = await Movie.find({ isActive: true }).sort({ popularity: -1, createdAt: -1 }).limit(limit).lean();
-        setCache(cacheKey, fallback, 30_000);
-        return res.json(new ApiResponse(200, fallback, "TMDB empty, returning DB movies"));
-      }
-
-      await Movie.bulkWrite(
-        tmdbMovies.map((movie) => ({
-          updateOne: {
-            filter: { tmdbId: movie.tmdbId },
-            update: { $set: movie },
-            upsert: true,
-          },
-        })),
-        { ordered: false }
-      );
-
-      const movies = await Movie.find({
-        tmdbId: { $in: tmdbMovies.map((movie) => movie.tmdbId) },
-        isActive: true,
-      })
-        .sort({ popularity: -1 })
-        .limit(limit)
-        .lean();
-
-      setCache(cacheKey, movies, 60_000);
-      return res.json(new ApiResponse(200, movies, "Trending movies fetched"));
-    } catch (_tmdbError) {
-      const fallback = await Movie.find({ isActive: true }).sort({ popularity: -1, createdAt: -1 }).limit(limit).lean();
-      setCache(cacheKey, fallback, 30_000);
-      return res.json(new ApiResponse(200, fallback, "TMDB unavailable, returning DB movies"));
-    }
+    const movies = await fetchTrendingMovies({ page, limit });
+    const ttl = movieProviderConfig.provider === "database" ? 30_000 : 60_000;
+    setCache(cacheKey, movies, ttl);
+    return res.json(
+      new ApiResponse(200, movies, `Trending movies fetched via ${movieProviderConfig.provider} provider`)
+    );
   } catch (error) {
     next(error);
   }
@@ -94,18 +63,11 @@ const getTrendingMovies = async (req, res, next) => {
 
 const getMovieById = async (req, res, next) => {
   try {
+    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
     const movie = await Movie.findById(req.params.id);
     if (!movie) throw new ApiError(404, "Movie not found");
 
-    if (movie.tmdbId && process.env.TMDB_API_KEY) {
-      try {
-        const details = await fetchMovieDetails(movie.tmdbId);
-        Object.assign(movie, mapTmdbMovie(details));
-        await movie.save();
-      } catch (_err) {
-        // Non-blocking; serve DB value.
-      }
-    }
+    await refreshMovieDetails(movie);
 
     res.json(new ApiResponse(200, movie, "Movie fetched"));
   } catch (error) {

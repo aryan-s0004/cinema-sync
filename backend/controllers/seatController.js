@@ -2,22 +2,10 @@ const Seat = require("../models/Seat");
 const Show = require("../models/Show");
 const ApiError = require("../utils/ApiError");
 const ApiResponse = require("../utils/ApiResponse");
-
-const LOCK_DURATION_MINUTES = Number(process.env.SEAT_LOCK_MINUTES || 10);
+const seatService = require("../services/seatService");
 
 const releaseExpiredLocks = async (showId = null) => {
-  const filter = {
-    status: "locked",
-    lockedUntil: { $lte: new Date() },
-  };
-
-  if (showId) {
-    filter.show = showId;
-  }
-
-  await Seat.updateMany(filter, {
-    $set: { status: "available", lockedBy: null, lockedUntil: null },
-  });
+  await seatService.releaseExpiredLocks(showId);
 };
 
 const getSeatsByShow = async (req, res, next) => {
@@ -26,7 +14,7 @@ const getSeatsByShow = async (req, res, next) => {
     const show = await Show.findById(showId).select("_id status").lean();
     if (!show || show.status !== "active") throw new ApiError(404, "Active show not found");
 
-    await releaseExpiredLocks(showId);
+    await seatService.releaseExpiredLocks(showId);
     const now = new Date();
     const seats = await Seat.find({ show: showId }).sort({ row: 1, number: 1 }).lean();
     
@@ -38,7 +26,11 @@ const getSeatsByShow = async (req, res, next) => {
         String(seat.lockedBy) === String(req.user._id) &&
         seat.lockedUntil > now
       );
-      return { ...seat, isMine };
+      return { 
+        ...seat, 
+        isMine,
+        lockedUntil: isMine ? seat.lockedUntil : undefined
+      };
     });
 
     res.json(new ApiResponse(200, enhancedSeats, "Seats fetched"));
@@ -50,76 +42,8 @@ const getSeatsByShow = async (req, res, next) => {
 const lockSeats = async (req, res, next) => {
   try {
     const { showId, seatIds } = req.body;
-    const userId = req.user._id;
-
-    if (!showId || !Array.isArray(seatIds) || !seatIds.length) {
-      throw new ApiError(400, "showId and seatIds are required");
-    }
-
-    const uniqueSeatIds = [...new Set(seatIds.map((id) => String(id)))];
-    const show = await Show.findById(showId).select("_id status").lean();
-    if (!show || show.status !== "active") {
-      throw new ApiError(404, "Active show not found");
-    }
-
-    const now = new Date();
-    const lockUntil = new Date(now.getTime() + LOCK_DURATION_MINUTES * 60 * 1000);
-
-    await releaseExpiredLocks(showId);
-
-    const availableSeats = await Seat.find({
-      _id: { $in: uniqueSeatIds },
-      show: showId,
-      $or: [
-        { status: "available" },
-        { status: "locked", lockedUntil: { $lte: now } },
-        { status: "locked", lockedBy: userId, lockedUntil: { $gt: now } },
-      ],
-    })
-      .select("_id")
-      .lean();
-
-    if (availableSeats.length !== uniqueSeatIds.length) {
-      throw new ApiError(409, "Some seats are already booked/locked by another user");
-    }
-
-    const result = await Seat.updateMany(
-      {
-        _id: { $in: uniqueSeatIds },
-        show: showId,
-        $or: [
-          { status: "available" },
-          { status: "locked", lockedUntil: { $lte: now } },
-          { status: "locked", lockedBy: userId, lockedUntil: { $gt: now } },
-        ],
-      },
-      {
-        $set: {
-          status: "locked",
-          lockedBy: userId,
-          lockedUntil: lockUntil,
-        },
-      }
-    );
-
-    if (result.modifiedCount !== uniqueSeatIds.length) {
-      await Seat.updateMany(
-        {
-          _id: { $in: uniqueSeatIds },
-          show: showId,
-          status: "locked",
-          lockedBy: userId,
-          lockedUntil: lockUntil,
-        },
-        {
-          $set: { status: "available", lockedBy: null, lockedUntil: null },
-        }
-      );
-      throw new ApiError(409, "Some seats are already booked/locked by another user");
-    }
-
-    const seats = await Seat.find({ _id: { $in: uniqueSeatIds } }).sort({ row: 1, number: 1 }).lean();
-    res.json(new ApiResponse(200, { lockUntil, seats }, `Seats locked for ${LOCK_DURATION_MINUTES} minutes`));
+    const result = await seatService.lockSeats(showId, seatIds, req.user._id);
+    res.json(new ApiResponse(200, result, `Seats locked for ${seatService.LOCK_DURATION_MINUTES} minutes`));
   } catch (error) {
     next(error);
   }

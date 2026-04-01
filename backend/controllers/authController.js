@@ -13,6 +13,7 @@ const {
 } = require("../services/emailService");
 const { sendOtpSms, hasSmsCredentials } = require("../services/smsService");
 const { normalizePhone } = require("../validators/common");
+const logger = require("../utils/logger");
 
 const signAccessToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_ACCESS_SECRET, {
@@ -35,6 +36,19 @@ const mapUserAuthPayload = (user) => ({
   authProvider: user.authProvider || "local",
   avatar: user.avatar || "",
 });
+
+const issueUserSession = async (user) => {
+  const accessToken = signAccessToken(user._id);
+  const refreshToken = signRefreshToken(user._id);
+  user.refreshToken = refreshToken;
+  await user.save();
+
+  return {
+    user: mapUserAuthPayload(user),
+    accessToken,
+    refreshToken,
+  };
+};
 
 const OTP_EXPIRY_MINUTES = Math.max(Number(process.env.OTP_EXPIRY_MINUTES || 5), 2);
 const OTP_MIN_RESEND_SECONDS = Math.max(Number(process.env.OTP_MIN_RESEND_SECONDS || 30), 15);
@@ -168,6 +182,12 @@ const sendOtpForUser = async ({ user, channel = "email", purpose = "login" }) =>
   };
 };
 
+const ensureLocalUserVerified = (user) => {
+  if (user?.authProvider !== "google" && !user?.emailVerified) {
+    throw new ApiError(403, "Verify your email before continuing. Check your inbox for the verification OTP.");
+  }
+};
+
 const registerUser = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
@@ -192,13 +212,11 @@ const registerUser = async (req, res, next) => {
     }
 
     const user = await User.create({ name, email, password, phone: phone || undefined });
-    const accessToken = signAccessToken(user._id);
-    const refreshToken = signRefreshToken(user._id);
-
-    user.refreshToken = refreshToken;
     const otpData = await setUserOtp(user, "email_verification");
 
-    sendAccountCreatedEmail({ to: user.email, name: user.name }).catch((err) => console.error("[Auth] Welcome email failed:", err.message));
+    sendAccountCreatedEmail({ to: user.email, name: user.name }).catch((err) =>
+      logger.warn("Welcome email failed", { message: err.message, userId: String(user._id) })
+    );
     const otpDelivery = await sendOtpEmail({
       to: user.email,
       name: user.name,
@@ -216,8 +234,7 @@ const registerUser = async (req, res, next) => {
         201,
         {
           user: mapUserAuthPayload(user),
-          accessToken,
-          refreshToken,
+          verificationRequired: true,
           emailVerification: {
             required: true,
             expiresAt: otpData.expiresAt,
@@ -237,6 +254,7 @@ const registerUser = async (req, res, next) => {
 const loginUser = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+    const channel = String(req.body?.channel || "").trim().toLowerCase();
     if (!email || !password) {
       throw new ApiError(400, "Email and password are required");
     }
@@ -250,14 +268,29 @@ const loginUser = async (req, res, next) => {
       throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
     }
 
+    ensureLocalUserVerified(user);
+
     if (!(await user.matchPassword(password))) {
       throw new ApiError(401, "Invalid credentials");
     }
 
-    const accessToken = signAccessToken(user._id);
-    const refreshToken = signRefreshToken(user._id);
-    user.refreshToken = refreshToken;
-    await user.save();
+    if (channel === "phone") {
+      if (!user.phone) {
+        throw new ApiError(400, "No phone number linked to this account. Use email login instead.");
+      }
+
+      const otpPayload = await sendOtpForUser({ user, channel: "phone", purpose: "login" });
+      return res.json(
+        new ApiResponse(
+          200,
+          {
+            otpRequired: true,
+            ...otpPayload,
+          },
+          "OTP sent for phone login verification"
+        )
+      );
+    }
 
     sendLoginAlertEmail({
       to: user.email,
@@ -265,16 +298,12 @@ const loginUser = async (req, res, next) => {
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
       loginAt: new Date().toISOString(),
-    }).catch((err) => console.error("[Auth] Login alert email failed:", err.message));
+    }).catch((err) => logger.warn("Login alert email failed", { message: err.message, userId: String(user._id) }));
 
     res.json(
       new ApiResponse(
         200,
-        {
-          user: mapUserAuthPayload(user),
-          accessToken,
-          refreshToken,
-        },
+        await issueUserSession(user),
         "Login successful"
       )
     );
@@ -295,6 +324,8 @@ const requestLoginOtp = async (req, res, next) => {
     if (user.authProvider === "google" && user.googleId) {
       throw new ApiError(400, "This account uses Google sign-in. Continue with Google.");
     }
+
+    ensureLocalUserVerified(user);
 
     if (channel === "phone" && !user.phone) {
       throw new ApiError(400, "No phone number linked to this account. Use email OTP or update profile.");
@@ -329,27 +360,18 @@ const verifyLoginOtp = async (req, res, next) => {
       await clearUserOtp(user, "otp");
     }
 
-    const accessToken = signAccessToken(user._id);
-    const refreshToken = signRefreshToken(user._id);
-    user.refreshToken = refreshToken;
-    await user.save();
-
     sendLoginAlertEmail({
       to: user.email,
       name: user.name,
       ipAddress: req.ip,
       userAgent: req.headers["user-agent"],
       loginAt: new Date().toISOString(),
-    }).catch((err) => console.error("[Auth] Login alert email failed:", err.message));
+    }).catch((err) => logger.warn("Login alert email failed", { message: err.message, userId: String(user._id) }));
 
     res.json(
       new ApiResponse(
         200,
-        {
-          user: mapUserAuthPayload(user),
-          accessToken,
-          refreshToken,
-        },
+        await issueUserSession(user),
         "Login successful"
       )
     );
@@ -370,7 +392,17 @@ const verifyAccountOtp = async (req, res, next) => {
     user.emailVerified = true;
     await clearUserOtp(user, "otp");
 
-    res.json(new ApiResponse(200, { emailVerified: true }, "Email verified successfully"));
+    const session = await issueUserSession(user);
+    res.json(
+      new ApiResponse(
+        200,
+        {
+          ...session,
+          emailVerified: true,
+        },
+        "Email verified successfully"
+      )
+    );
   } catch (error) {
     next(error);
   }
@@ -447,15 +479,29 @@ const resetPassword = async (req, res, next) => {
   try {
     const { resetToken, newPassword } = req.body;
 
-    if (!resetToken || !newPassword) {
-      throw new ApiError(400, "resetToken and newPassword are required");
+    if (!newPassword) {
+      throw new ApiError(400, "newPassword is required");
     }
 
-    const hashedToken = hashOtp(resetToken);
-    const user = await User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpiry: { $gt: new Date() },
-    });
+    let user = null;
+
+    if (resetToken) {
+      const hashedToken = hashOtp(resetToken);
+      user = await User.findOne({
+        passwordResetToken: hashedToken,
+        passwordResetExpiry: { $gt: new Date() },
+      });
+    } else if (req.body?.email && req.body?.otp) {
+      user = await User.findOne({ email: String(req.body.email).toLowerCase() });
+      if (!user) {
+        throw new ApiError(404, "User not found");
+      }
+
+      await verifyStoredOtp({ user, otp: req.body.otp, purpose: "password_reset", field: "otp" });
+      await clearUserOtp(user, "otp");
+    } else {
+      throw new ApiError(400, "Provide either resetToken or email + otp with newPassword");
+    }
 
     if (!user) {
       throw new ApiError(400, "Reset token is invalid or has expired");
@@ -595,6 +641,8 @@ const refreshAccessToken = async (req, res, next) => {
     if (!user || user.refreshToken !== refreshToken) {
       throw new ApiError(403, "Invalid refresh token");
     }
+
+    ensureLocalUserVerified(user);
 
     const newAccessToken = signAccessToken(user._id);
     const newRefreshToken = signRefreshToken(user._id);

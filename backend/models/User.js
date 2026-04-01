@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema(
     googleId: { type: String, unique: true, sparse: true },
     avatar: { type: String, default: "" },
     role: { type: String, enum: ["user", "admin"], default: "user" },
+    stripeCustomerId: { type: String, trim: true },
     refreshToken: { type: String, default: null },
     emailVerified: { type: Boolean, default: false },
     phoneVerified: { type: Boolean, default: false },
@@ -38,6 +39,14 @@ const userSchema = new mongoose.Schema(
     passwordResetExpiry: { type: Date, default: null },
   },
   { timestamps: true }
+);
+
+userSchema.index(
+  { stripeCustomerId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { stripeCustomerId: { $type: "string" } },
+  }
 );
 
 userSchema.pre("save", async function preSave() {

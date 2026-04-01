@@ -64,6 +64,7 @@ const createDefaultShowsForMovie = async (movieId) => {
 
 const getAllShows = async (req, res, next) => {
   try {
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     const { movieId, date } = req.query;
     const page = parsePositiveInt(req.query.page, 1);
     const limit = Math.min(parsePositiveInt(req.query.limit, 20), 100);
@@ -122,6 +123,7 @@ const getAllShows = async (req, res, next) => {
 
 const getShowById = async (req, res, next) => {
   try {
+    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
     const show = await Show.findById(req.params.id)
       .populate({ path: "movie", select: "title posterPath language rating releaseDate duration" })
       .lean();

@@ -1,12 +1,11 @@
 let nodemailer = null;
 try {
-  // Optional dependency. If unavailable, service gracefully falls back to console logging.
-  // eslint-disable-next-line global-require
   nodemailer = require("nodemailer");
-} catch (_err) {
+} catch (_error) {
   nodemailer = null;
 }
 
+const logger = require("../utils/logger");
 const {
   buildOtpTemplate,
   buildAccountCreatedTemplate,
@@ -14,85 +13,62 @@ const {
   buildBookingConfirmationTemplate,
 } = require("./emailTemplates");
 
-/* ── Env helpers ───────────────────────────────────────── */
+const resolveEmailUser = () => (process.env.EMAIL_USER || process.env.EMAIL || "").trim();
+const resolveEmailPass = () => (process.env.EMAIL_PASS || process.env.APP_PASSWORD || "").trim();
+const hasSmtpCredentials = () => Boolean(resolveEmailUser() && resolveEmailPass());
 
-const resolveEmailUser = () =>
-  (process.env.EMAIL_USER || process.env.EMAIL || "").trim();
-
-const resolveEmailPass = () =>
-  (process.env.EMAIL_PASS || process.env.APP_PASSWORD || "").trim();
-
-const hasSmtpCredentials = () =>
-  Boolean(resolveEmailUser() && resolveEmailPass());
-
-/* ── Cached transporter (created once, reused) ─────────── */
-
-let _cachedTransporter = null;
-let _transporterVerified = false;
+let cachedTransporter = null;
+let transporterVerified = false;
 
 const createTransporter = () => {
-  if (_cachedTransporter) return _cachedTransporter;
+  if (cachedTransporter) return cachedTransporter;
   if (!nodemailer) return null;
 
   const smtpUser = resolveEmailUser();
   const smtpPass = resolveEmailPass();
+  const smtpHost = (process.env.SMTP_HOST || "").trim();
 
-  const smtpHost = process.env.SMTP_HOST;
   if (smtpHost) {
-    _cachedTransporter = nodemailer.createTransport({
+    cachedTransporter = nodemailer.createTransport({
       host: smtpHost,
       port: Number(process.env.SMTP_PORT || 587),
       secure: String(process.env.SMTP_SECURE || "false").toLowerCase() === "true",
-      auth: smtpUser && smtpPass
-        ? { user: smtpUser, pass: smtpPass }
-        : undefined,
+      auth: smtpUser && smtpPass ? { user: smtpUser, pass: smtpPass } : undefined,
     });
-    return _cachedTransporter;
+    return cachedTransporter;
   }
 
   if (smtpUser && smtpPass) {
-    _cachedTransporter = nodemailer.createTransport({
+    cachedTransporter = nodemailer.createTransport({
       service: process.env.EMAIL_SERVICE || "gmail",
       auth: { user: smtpUser, pass: smtpPass },
     });
-    return _cachedTransporter;
   }
 
-  return null;
+  return cachedTransporter;
 };
 
-/**
- * Verify SMTP connection once at startup.
- * Logs a clear message so misconfiguration is obvious in server logs.
- */
 const verifyTransporter = async () => {
-  if (_transporterVerified) return;
+  if (transporterVerified) return;
 
   const transporter = createTransporter();
   if (!transporter) {
-    console.warn(
-      "[Email] ⚠  No SMTP credentials configured. Emails will fall back to console logging.",
-      { EMAIL_USER: resolveEmailUser() ? "set" : "MISSING", EMAIL_PASS: resolveEmailPass() ? "set" : "MISSING" }
-    );
+    logger.warn("SMTP is not configured; email service will fall back to logs");
     return;
   }
 
-  try {
-    await transporter.verify();
-    _transporterVerified = true;
-    console.log("[Email] ✅ SMTP transporter verified – emails will be delivered via", process.env.EMAIL_SERVICE || process.env.SMTP_HOST || "gmail");
-  } catch (err) {
-    console.error("[Email] ❌ SMTP verification FAILED:", err.message);
-    console.error("[Email]    Check EMAIL_USER, EMAIL_PASS (must be a Google App Password, NOT your regular password).");
-    console.error("[Email]    Ensure 2-Step Verification is enabled on the Google account.");
-    // Don't throw — allow the server to start; emails will fail at send time with clear errors.
-  }
+  await transporter.verify();
+  transporterVerified = true;
+  logger.info("SMTP transporter verified", {
+    provider: process.env.EMAIL_SERVICE || process.env.SMTP_HOST || "custom",
+  });
 };
 
-// Kick off verification when module is first loaded (non-blocking).
-setImmediate(() => { verifyTransporter().catch(() => {}); });
-
-/* ── Core send function ────────────────────────────────── */
+setImmediate(() => {
+  verifyTransporter().catch((error) => {
+    logger.warn("SMTP verification skipped", { message: error.message });
+  });
+});
 
 const EMAIL_FALLBACK_TO_LOG = String(process.env.EMAIL_FALLBACK_TO_LOG || "true").toLowerCase() === "true";
 
@@ -102,7 +78,6 @@ const sendEmail = async ({ to, subject, text, html }) => {
   }
 
   const transporter = createTransporter();
-
   if (transporter) {
     try {
       const info = await transporter.sendMail({
@@ -112,16 +87,13 @@ const sendEmail = async ({ to, subject, text, html }) => {
         text,
         html,
       });
-      console.log("[Email] ✉  Sent to", to, "| subject:", subject, "| messageId:", info.messageId);
+      logger.info("Email sent", { to, subject, messageId: info.messageId });
       return { delivered: true, mode: "smtp" };
-    } catch (err) {
-      console.error("[Email] ❌ Failed to send to", to, "| subject:", subject);
-      console.error("[Email]    Error:", err.message);
-
+    } catch (error) {
+      logger.error("Email delivery failed", { to, subject, message: error.message });
       if (!EMAIL_FALLBACK_TO_LOG) {
-        throw err;
+        throw error;
       }
-      // Fall through to log fallback
     }
   }
 
@@ -129,11 +101,13 @@ const sendEmail = async ({ to, subject, text, html }) => {
     throw new Error("Email transport not configured and fallback disabled");
   }
 
-  console.warn("[Email Fallback]", { to, subject, text: text?.substring(0, 100), html: html ? "[html]" : null });
+  logger.warn("Email fallback", {
+    to,
+    subject,
+    preview: text ? text.slice(0, 120) : null,
+  });
   return { delivered: false, mode: "log" };
 };
-
-/* ── Convenience senders ───────────────────────────────── */
 
 const sendOtpEmail = async ({ to, name, otp, purpose = "login", expiresInMinutes = 5 }) => {
   const template = buildOtpTemplate({ name, otp, purpose, expiresInMinutes });
@@ -174,32 +148,32 @@ const sendBookingConfirmationEmail = async ({
   return sendEmail({ to, subject: template.subject, text: template.text, html: template.html });
 };
 
-const sendAdminPaymentNotification = async ({ 
-  customerName, 
-  customerEmail, 
-  amount, 
-  transactionId, 
-  movieTitle 
+const sendAdminPaymentNotification = async ({
+  customerName,
+  customerEmail,
+  amount,
+  transactionId,
+  movieTitle,
 }) => {
-  const subject = `🚀 New Payment Received: ${movieTitle}`;
-  const html = `
-    <div style="font-family: sans-serif; max-width: 600px; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
-      <h2 style="color: #10b981;">New Payment Captured</h2>
-      <p>A new booking has been confirmed on the CinemaSync platform.</p>
-      <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+  const adminEmail = String(process.env.ADMIN_NOTIFICATION_EMAIL || "").trim();
+  if (!adminEmail) {
+    return { delivered: false, mode: "skipped" };
+  }
+
+  return sendEmail({
+    to: adminEmail,
+    subject: `New payment received: ${movieTitle}`,
+    text: `Customer ${customerName} (${customerEmail}) paid INR ${amount}. Transaction ${transactionId}.`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 640px; margin: 0 auto; padding: 24px;">
+        <h2>New Payment Captured</h2>
+        <p>A new CinemaSync booking has been confirmed.</p>
         <p><strong>Customer:</strong> ${customerName} (${customerEmail})</p>
-        <p><strong>Amount:</strong> ₹${amount}</p>
         <p><strong>Movie:</strong> ${movieTitle}</p>
-        <p><strong>Transaction ID:</strong> <code style="background: #e2e8f0; padding: 2px 5px; border-radius: 4px;">${transactionId}</code></p>
+        <p><strong>Amount:</strong> INR ${amount}</p>
+        <p><strong>Transaction ID:</strong> ${transactionId}</p>
       </div>
-      <p style="color: #64748b; font-size: 12px;">This is an automated notification for the administrator.</p>
-    </div>
-  `;
-  return sendEmail({ 
-    to: "aryancoder999@gmail.com", 
-    subject, 
-    html,
-    text: `New Payment: ${customerName} paid ₹${amount} for ${movieTitle}. Txn ID: ${transactionId}`
+    `,
   });
 };
 

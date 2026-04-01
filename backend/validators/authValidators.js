@@ -125,18 +125,34 @@ const verifyForgotPasswordOTPValidator = (body) => {
 
 const resetPasswordValidator = (body) => {
   const resetToken = String(body.resetToken || "").trim();
-  if (!isNonEmptyString(resetToken)) {
-    return { error: "resetToken is required" };
-  }
-
   const newPassword = String(body.newPassword || "");
   if (!isNonEmptyString(newPassword) || newPassword.length < 6) {
     return { error: "newPassword must be at least 6 characters" };
   }
 
+  if (isNonEmptyString(resetToken)) {
+    return {
+      value: {
+        resetToken,
+        newPassword,
+      },
+    };
+  }
+
+  const normalizedEmail = normalizeEmail(body.email);
+  const otp = String(body.otp || "").trim();
+  if (!normalizedEmail || !normalizedEmail.includes("@")) {
+    return { error: "Valid email is required when resetToken is not provided" };
+  }
+
+  if (!/^\d{6}$/.test(otp)) {
+    return { error: "otp must be a 6-digit code when resetToken is not provided" };
+  }
+
   return {
     value: {
-      resetToken,
+      email: normalizedEmail,
+      otp,
       newPassword,
     },
   };

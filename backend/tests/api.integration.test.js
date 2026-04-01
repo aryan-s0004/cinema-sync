@@ -11,7 +11,9 @@ process.env.JWT_ACCESS_EXPIRY = process.env.JWT_ACCESS_EXPIRY || "15m";
 process.env.JWT_REFRESH_EXPIRY = process.env.JWT_REFRESH_EXPIRY || "7d";
 process.env.PAYMENT_PROVIDER = process.env.PAYMENT_PROVIDER || "mock";
 process.env.PAYMENT_WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET || "test_webhook_secret";
-process.env.SEAT_LOCK_MINUTES = process.env.SEAT_LOCK_MINUTES || "10";
+process.env.OTP_DEBUG_PREVIEW = process.env.OTP_DEBUG_PREVIEW || "true";
+process.env.PAYMENT_DEBUG_PREVIEW = process.env.PAYMENT_DEBUG_PREVIEW || "true";
+process.env.SEAT_LOCK_MINUTES = process.env.SEAT_LOCK_MINUTES || "15";
 
 const TEST_MONGO_URI = process.env.MONGO_URI_TEST || "mongodb://127.0.0.1:27017/cinemasync_test";
 
@@ -26,31 +28,48 @@ const clearDb = async () => {
   await Promise.all(Object.values(collections).map((collection) => collection.deleteMany({})));
 };
 
-const registerUserAndGetToken = async () => {
-  const email = `test_${Date.now()}_${Math.floor(Math.random() * 10000)}@example.com`;
+const registerUser = async (overrides = {}) => {
+  const email = overrides.email || `test_${Date.now()}_${Math.floor(Math.random() * 10000)}@example.com`;
   const response = await request(app).post("/api/auth/register").send({
     name: "Integration User",
     email,
     password: "password123",
+    ...overrides,
   });
 
   assert.equal(response.status, 201);
-  return response.body.data.accessToken;
+  return {
+    email,
+    response,
+    otp: response.body.data.emailVerification?.otpPreview,
+  };
+};
+
+const verifyRegisteredUser = async ({ email, otp }) => {
+  assert.ok(otp);
+  const response = await request(app).post("/api/auth/verify-account-otp").send({ email, otp });
+  assert.equal(response.status, 200);
+  assert.equal(response.body.success, true);
+  assert.ok(response.body.data.accessToken);
+  return response;
+};
+
+const registerUserAndGetToken = async (overrides = {}) => {
+  const registered = await registerUser(overrides);
+  const verification = await verifyRegisteredUser(registered);
+  return verification.body.data.accessToken;
 };
 
 const registerAdminAndGetToken = async () => {
   const email = `admin_${Date.now()}_${Math.floor(Math.random() * 10000)}@example.com`;
-  const response = await request(app).post("/api/auth/register").send({
+  const token = await registerUserAndGetToken({
     name: "Admin User",
     email,
-    password: "password123",
   });
-
-  assert.equal(response.status, 201);
   const user = await User.findOne({ email });
   user.role = "admin";
   await user.save();
-  return response.body.data.accessToken;
+  return token;
 };
 
 before(async () => {
@@ -83,8 +102,9 @@ test("POST /api/auth/register succeeds with valid payload", async () => {
 
   assert.equal(response.status, 201);
   assert.equal(response.body.success, true);
-  assert.ok(response.body.data.accessToken);
-  assert.ok(response.body.data.refreshToken);
+  assert.equal(response.body.data.verificationRequired, true);
+  assert.ok(response.body.data.emailVerification?.otpPreview);
+  assert.equal(response.body.data.user.emailVerified, false);
 });
 
 test("POST /api/auth/register returns 400 for invalid payload", async () => {
@@ -99,47 +119,33 @@ test("POST /api/auth/register returns 400 for invalid payload", async () => {
   assert.equal(response.body.message, "Validation failed");
 });
 
-test("POST /api/auth/login requires OTP and verifies successfully", async () => {
-  await request(app).post("/api/auth/register").send({
-    name: "Otp User",
-    email: "otp_user@example.com",
+test("POST /api/auth/login succeeds directly with valid credentials", async () => {
+  const registered = await registerUser({
+    name: "Login User",
+    email: "login_user@example.com",
     password: "password123",
   });
+  await verifyRegisteredUser(registered);
 
   const loginRes = await request(app).post("/api/auth/login").send({
-    email: "otp_user@example.com",
+    email: "login_user@example.com",
     password: "password123",
   });
 
   assert.equal(loginRes.status, 200);
   assert.equal(loginRes.body.success, true);
-  assert.equal(loginRes.body.data.otpRequired, true);
-
-  const user = await User.findOne({ email: "otp_user@example.com" });
-  user.otp.hash = crypto.createHash("sha256").update("000000").digest("hex");
-  user.otp.purpose = "login";
-  user.otp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-  user.otp.attempts = 0;
-  await user.save();
-
-  const verifyRes = await request(app).post("/api/auth/login/verify-otp").send({
-    email: "otp_user@example.com",
-    otp: "000000",
-  });
-
-  assert.equal(verifyRes.status, 200);
-  assert.equal(verifyRes.body.success, true);
-  assert.ok(verifyRes.body.data.accessToken);
-  assert.ok(verifyRes.body.data.refreshToken);
+  assert.ok(loginRes.body.data.accessToken);
+  assert.ok(loginRes.body.data.refreshToken);
 });
 
 test("POST /api/auth/login supports phone OTP channel", async () => {
-  await request(app).post("/api/auth/register").send({
+  const registered = await registerUser({
     name: "Phone User",
     email: "phone_user@example.com",
     phone: "+919876543210",
     password: "password123",
   });
+  await verifyRegisteredUser(registered);
 
   const loginRes = await request(app).post("/api/auth/login").send({
     email: "phone_user@example.com",
@@ -152,16 +158,9 @@ test("POST /api/auth/login supports phone OTP channel", async () => {
   assert.equal(loginRes.body.data.otpRequired, true);
   assert.equal(loginRes.body.data.channel, "phone");
 
-  const user = await User.findOne({ email: "phone_user@example.com" });
-  user.phoneOtp.hash = crypto.createHash("sha256").update("000000").digest("hex");
-  user.phoneOtp.purpose = "login_phone";
-  user.phoneOtp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-  user.phoneOtp.attempts = 0;
-  await user.save();
-
   const verifyRes = await request(app).post("/api/auth/login/verify-otp").send({
     email: "phone_user@example.com",
-    otp: "000000",
+    otp: loginRes.body.data.otpPreview,
     channel: "phone",
   });
 
@@ -172,12 +171,13 @@ test("POST /api/auth/login supports phone OTP channel", async () => {
 });
 
 test("POST /api/auth/login/otp/request sends passwordless login OTP", async () => {
-  await request(app).post("/api/auth/register").send({
+  const registered = await registerUser({
     name: "Otp Request User",
     email: "otp_request_user@example.com",
     phone: "+919999999999",
     password: "password123",
   });
+  await verifyRegisteredUser(registered);
 
   const response = await request(app).post("/api/auth/login/otp/request").send({
     email: "otp_request_user@example.com",
@@ -192,11 +192,12 @@ test("POST /api/auth/login/otp/request sends passwordless login OTP", async () =
 });
 
 test("password reset flow updates credentials using OTP", async () => {
-  await request(app).post("/api/auth/register").send({
+  const registered = await registerUser({
     name: "Reset User",
     email: "reset_user@example.com",
     password: "oldpass123",
   });
+  await verifyRegisteredUser(registered);
 
   const forgotRes = await request(app).post("/api/auth/password/forgot").send({
     email: "reset_user@example.com",
@@ -206,18 +207,10 @@ test("password reset flow updates credentials using OTP", async () => {
   assert.equal(forgotRes.body.success, true);
   assert.equal(forgotRes.body.data.requested, true);
 
-  const user = await User.findOne({ email: "reset_user@example.com" });
-  user.otp.hash = crypto.createHash("sha256").update("111111").digest("hex");
-  user.otp.purpose = "password_reset";
-  user.otp.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-  user.otp.attempts = 0;
-  await user.save();
+  const otp = forgotRes.body.data.otpPreview;
+  assert.ok(otp);
 
-  const resetRes = await request(app).post("/api/auth/password/reset").send({
-    email: "reset_user@example.com",
-    otp: "111111",
-    newPassword: "newpass123",
-  });
+  const resetRes = await request(app).post("/api/auth/password/reset").send({ email: "reset_user@example.com", otp, newPassword: "newpass123" });
 
   assert.equal(resetRes.status, 200);
   assert.equal(resetRes.body.success, true);
@@ -234,7 +227,7 @@ test("password reset flow updates credentials using OTP", async () => {
     password: "newpass123",
   });
   assert.equal(newPasswordLoginRes.status, 200);
-  assert.equal(newPasswordLoginRes.body.data.otpRequired, true);
+  assert.ok(newPasswordLoginRes.body.data.accessToken);
 });
 
 test("GET /api/bookings/my returns 401 without token", async () => {
@@ -417,7 +410,7 @@ test("booking flow: lock seats -> booking -> initiate -> confirm -> status -> ti
       gatewayToken: initiateRes.body.data.gatewayToken,
       gatewayTokenExpiresAt: initiateRes.body.data.gatewayTokenExpiresAt,
       paymentId: "demo_payment_id",
-      paymentOtp: "000000",
+      paymentOtp: otpRes.body.data.otpPreview,
       method: "upi",
     });
 

@@ -1,9 +1,23 @@
 const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
 const maxRequests = Number(process.env.RATE_LIMIT_MAX || 120);
+const cleanupIntervalMs = Math.max(Number(process.env.RATE_LIMIT_CLEANUP_MS || 300_000), windowMs);
 
 const store = new Map();
 
+setInterval(() => {
+  const cutoff = Date.now() - windowMs;
+  for (const [key, entry] of store.entries()) {
+    if (entry.windowStart < cutoff) {
+      store.delete(key);
+    }
+  }
+}, cleanupIntervalMs).unref();
+
 const rateLimiter = (req, res, next) => {
+  if (req.path === "/api/health") {
+    return next();
+  }
+
   const now = Date.now();
   const key = req.ip || req.socket.remoteAddress || "unknown";
 

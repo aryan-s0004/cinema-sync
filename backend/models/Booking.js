@@ -15,6 +15,7 @@ const bookingSchema = new mongoose.Schema(
       provider: { type: String, default: "mock" },
       transactionId: { type: String },
       orderId: { type: String },
+      gatewayToken: { type: String },
       method: { type: String, enum: ["upi", "card", "netbanking", null] },
       methodRef: { type: String },
       paymentId: { type: String },

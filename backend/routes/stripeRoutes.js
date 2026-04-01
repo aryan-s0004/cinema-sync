@@ -1,8 +1,10 @@
 const express = require("express");
 const {
   initiatePayment,
+  requestPaymentOtp,
   confirmPayment,
   getPaymentStatus,
+  handleMockWebhook,
   handlePaymentWebhook,
 } = require("../controllers/stripeController");
 const { protect } = require("../middleware/authMiddleware");
@@ -10,7 +12,10 @@ const { protect } = require("../middleware/authMiddleware");
 const validateRequest = require("../middleware/validateRequest");
 const {
   initiatePaymentValidator,
+  paymentOtpRequestValidator,
+  confirmPaymentValidator,
   paymentStatusParamValidator,
+  paymentWebhookValidator,
 } = require("../validators/stripeValidators");
 
 const router = express.Router();
@@ -22,16 +27,18 @@ const router = express.Router();
 
 // Webhook for async success (MUST BE EXEMPT FROM AUTH)
 router.post("/webhook/stripe", handlePaymentWebhook);
+router.post("/webhook/mock", validateRequest({ body: paymentWebhookValidator }), handleMockWebhook);
 
 // Payment Initiation (Stripe Intent)
-router.post("/initiate", protect, validateRequest(initiatePaymentValidator), initiatePayment);
-router.post("/confirm", protect, confirmPayment);
+router.post("/initiate", protect, validateRequest({ body: initiatePaymentValidator }), initiatePayment);
+router.post("/request-otp", protect, validateRequest({ body: paymentOtpRequestValidator }), requestPaymentOtp);
+router.post("/confirm", protect, validateRequest({ body: confirmPaymentValidator }), confirmPayment);
 
 // Polling for status synchronization
-router.get("/status/:transactionId", protect, validateRequest(paymentStatusParamValidator, "params"), getPaymentStatus);
+router.get("/status/:transactionId", protect, validateRequest({ params: paymentStatusParamValidator }), getPaymentStatus);
 
 // Backward Compatibility Aliases
-router.post("/create-order", protect, validateRequest(initiatePaymentValidator), initiatePayment);
-router.post("/verify", protect, confirmPayment);
+router.post("/create-order", protect, validateRequest({ body: initiatePaymentValidator }), initiatePayment);
+router.post("/verify", protect, validateRequest({ body: confirmPaymentValidator }), confirmPayment);
 
 module.exports = router;

@@ -126,12 +126,10 @@ const confirmPaymentValidator = (body) => {
     return { error: "transactionId is required" };
   }
 
-  if (!isNonEmptyString(body.gatewayToken)) {
-    return { error: "gatewayToken is required" };
-  }
-
-  if (!isNonEmptyString(body.gatewayTokenExpiresAt)) {
-    return { error: "gatewayTokenExpiresAt is required" };
+  const hasGatewayPair = isNonEmptyString(body.gatewayToken) && isNonEmptyString(body.gatewayTokenExpiresAt);
+  const hasStripeStylePayload = !body.gatewayToken && !body.gatewayTokenExpiresAt;
+  if (!hasGatewayPair && !hasStripeStylePayload) {
+    return { error: "gatewayToken and gatewayTokenExpiresAt must both be provided for mock payments" };
   }
 
   if (body.paymentId && !isNonEmptyString(body.paymentId)) {
@@ -153,8 +151,8 @@ const confirmPaymentValidator = (body) => {
   return {
     value: {
       transactionId: body.transactionId,
-      gatewayToken: body.gatewayToken,
-      gatewayTokenExpiresAt: body.gatewayTokenExpiresAt,
+      gatewayToken: hasGatewayPair ? body.gatewayToken : null,
+      gatewayTokenExpiresAt: hasGatewayPair ? body.gatewayTokenExpiresAt : null,
       paymentId: body.paymentId,
       paymentOtp: body.paymentOtp,
       method: body.method,

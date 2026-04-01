@@ -21,6 +21,10 @@ const protect = async (req, _res, next) => {
       throw new ApiError(401, "User not found for token");
     }
 
+    if (user.authProvider !== "google" && !user.emailVerified) {
+      throw new ApiError(403, "Verify your email before continuing");
+    }
+
     req.user = user;
     next();
   } catch (error) {

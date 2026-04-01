@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
+const compression = require("compression");
 const requestLogger = require("./middleware/requestLogger");
 const rateLimiter = require("./middleware/rateLimiter");
 const requestId = require("./middleware/requestId");
@@ -21,6 +22,7 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const app = express();
 app.disable("x-powered-by");
 app.set("trust proxy", 1);
+app.set("etag", "strong");
 
 const isProduction = process.env.NODE_ENV === "production";
 const configuredOrigin = process.env.CLIENT_URL || "";
@@ -46,7 +48,17 @@ app.use(
     credentials: true,
   })
 );
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    hsts: isProduction ? undefined : false,
+  })
+);
+app.use(
+  compression({
+    threshold: 1024,
+  })
+);
 app.use(
   express.json({
     limit: "100kb",

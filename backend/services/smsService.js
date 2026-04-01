@@ -1,4 +1,5 @@
 const axios = require("axios");
+const logger = require("../utils/logger");
 
 let twilio = null;
 try {
@@ -87,7 +88,7 @@ const sendSms = async ({ to, text }) => {
     throw new Error("SMS provider not configured");
   }
 
-  console.log("[SMS Fallback]", { to, text });
+  logger.warn("SMS fallback", { to, text });
   return { delivered: false, mode: "log" };
 };
 
@@ -101,4 +102,3 @@ module.exports = {
   sendOtpSms,
   hasSmsCredentials,
 };
-
