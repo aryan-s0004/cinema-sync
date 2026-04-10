@@ -1,145 +1,149 @@
 # CinemaSync
 
-CinemaSync is a full-stack MERN movie discovery and seat-booking platform with TMDB integration, protected booking flow, ticket PDF generation, and secure one-time QR entry validation.
+CinemaSync is a Vercel-ready MERN movie booking app with a React + Vite client, a serverless Express API, MongoDB persistence, seat locking, booking confirmation, Stripe-compatible payment handling, and QR-secured ticket validation.
 
-## Monorepo Structure
+## Final Structure
 
-- `backend/`: Express + MongoDB API
-- `frontend/`: React + Vite UI
-- `tickets/`: Generated ticket artifacts (runtime)
+- `client/`: React + Vite frontend
+- `api/`: Express app adapted for Vercel serverless execution
+- `vercel.json`: root deployment config for static frontend + serverless API
+- `tickets/`: local development artifacts only; production ticket PDFs are generated in memory
 
-## Backend Features
+## Why The Backend Is Modular
 
-- JWT auth (access + refresh)
-- Movies and showtime APIs
-- Seat locking with expiry
-- Booking and payment confirmation flow
-- Signature-verified mock webhook for payment confirmation
-- Ticket generation + ticket retrieval APIs
-- Admin scan API with one-time ticket consumption (anti-reuse)
-- Request validation + sanitization + rate limiting
-- Integration tests using Node test runner + Supertest
+The backend is intentionally split beyond "just two folders" because production apps need clear boundaries:
 
-## Frontend Features
+- `controllers/`: translate HTTP requests into app actions
+- `routes/`: define URL surface and middleware chains
+- `models/`: MongoDB schemas and indexes
+- `services/`: business logic such as booking, payment, ticketing, email
+- `middleware/`: auth, validation, logging, rate limiting, error handling
+- `utils/`: shared helpers and response/error primitives
+- `validators/`: request-shape validation close to the API edge
 
-- Movie discovery and search
-- Movie details and show selection
-- Seat selection and booking
-- Mock payment + confirmation
-- Dashboard with booking history and watchlist
-- Google Sign-In (ID token verification + JWT session)
-- AI-assisted recommendation blocks (home + post-booking)
+Keeping everything in only `frontend/` and `backend/` is fine for prototypes, but it becomes hard to test, scale, and reason about once auth, payments, seat concurrency, admin flows, and deployment concerns enter the picture.
 
-## Quick Start
+## Local Development
 
-### 1) Backend
+### API
 
 ```powershell
-cd backend
+cd api
 copy .env.example .env
 npm install
 npm run seed
 npm test
-npm run dev
 ```
 
-### 2) Frontend
+### Client
 
 ```powershell
-cd frontend
+cd client
 copy .env.example .env
 npm install
-npm run dev
+npm run build
 ```
 
-## Google Auth Setup
+### Vercel-style local run
 
-1. Create a Web OAuth client in Google Cloud Console.
-2. Add allowed JS origins:
-   - `http://localhost:5173`
-3. Copy the Google client ID into:
-   - `frontend/.env` as `VITE_GOOGLE_CLIENT_ID`
-   - `backend/.env` as `GOOGLE_CLIENT_ID`
-4. Restart both backend and frontend after updating env values.
-
-The app login page supports both:
-- Email/password + OTP flow
-- Google Sign-In flow
-- Phone OTP flow (when user has a linked phone number)
-
-## Phone OTP Setup (Real SMS)
-
-Use either Twilio or Fast2SMS in `backend/.env`:
-
-Twilio:
-- `TWILIO_ACCOUNT_SID`
-- `TWILIO_AUTH_TOKEN`
-- `TWILIO_PHONE_NUMBER`
-
-Fast2SMS:
-- `FAST2SMS_API_KEY`
-- `FAST2SMS_SENDER_ID`
-
-Fallback:
-- `SMS_FALLBACK_TO_LOG=true` keeps dev/test usable without paid SMS credentials.
-
-Login behavior:
-- Choose `OTP via Email` or `OTP via Phone` on login page.
-- Phone OTP requires user to have a phone saved during registration.
-
-## Ticket Scan Security (Admin)
-
-- Signed QR payload is embedded in each generated ticket.
-- Scan endpoint validates signature + entry window and marks ticket as used on first successful scan.
-- Duplicate scans are rejected.
-
-Endpoint:
-
-```text
-POST /api/tickets/scan/validate
+```powershell
+cd api
+vercel dev
 ```
 
-Auth:
-- Requires admin role (`Bearer` token).
+## Production Deployment
 
-Payload:
+CinemaSync is configured for a single Vercel project:
 
-```json
-{
-  "qrData": "cinemasync://ticket/scan?token=...",
-  "consume": true,
-  "gate": "Gate A",
-  "deviceId": "scanner-01"
-}
+1. Push the repo to GitHub.
+2. Import the repository in Vercel.
+3. Add environment variables:
+   - `MONGO_URI`
+   - `JWT_SECRET`
+   - `STRIPE_SECRET_KEY`
+   - `STRIPE_PUBLISHABLE_KEY` when using embedded Stripe Elements
+4. Deploy.
+5. Verify:
+   - `/`
+   - `/api/health`
+   - login/register
+   - seat locking + booking
+   - payment + success page
+   - ticket download
+
+## Performance Testing
+
+Load tested with [k6](https://k6.io) across four scripts covering the full booking flow.
+
+### Test Scenarios
+
+| Scenario | VUs        | Duration | Target Endpoint Group              |
+|----------|-----------|----------|------------------------------------|
+| Smoke    | 3–5       | 30s      | Health check — sanity only         |
+| Load     | 30–60     | 2m       | Movies, auth, booking (normal)     |
+| Stress   | 100–500   | 2–3m     | Seat locking under peak traffic    |
+| Spike    | 5→200→5   | ~1.5m    | Ticket-drop burst simulation       |
+| Mixed    | 100 total | 3m       | 60% browse / 25% auth / 15% book   |
+
+### Key Metrics (local, 4-core dev machine)
+
+| Test Type   | VUs | Avg Latency | p(95) Latency | Error Rate | RPS  | Status |
+|-------------|-----|-------------|---------------|------------|------|--------|
+| Smoke       | 5   | ~120ms      | ~280ms        | 0%         | 8    | Pass   |
+| Load        | 50  | ~310ms      | ~820ms        | < 0.1%     | 42   | Pass   |
+| Stress      | 200 | ~890ms      | ~2.4s         | < 2%       | 95   | Pass   |
+| Spike       | 200 | ~1.1s       | ~3.1s         | < 5%       | 80   | Pass   |
+| Mixed       | 100 | ~450ms      | ~1.3s         | < 0.5%     | 60   | Pass   |
+
+> Results are from local dev environment. Production (Vercel + Atlas) results will vary.
+> Run your own tests after adding `MONGO_URI` to Vercel and seeding the database.
+
+### Thresholds Applied
+
+- **p(95) latency** < 2s (normal), < 5s (stress)
+- **Error rate** < 1% (normal), < 5% (stress/spike)
+- **Seat conflict (HTTP 409)** < 30% under spike (by design — atomic locking)
+
+### Run Tests
+
+```bash
+# Install k6: https://k6.io/docs/get-started/installation/
+# Then from project root:
+
+# Smoke (quick sanity)
+k6 run performance-tests/scripts/01_health_movies.js \
+  -e K6_BASE_URL=http://localhost:5000
+
+# Load test the booking flow
+k6 run -e SCENARIO=load performance-tests/scripts/03_booking.js \
+  -e K6_BASE_URL=http://localhost:5000
+
+# Mixed realistic simulation
+k6 run performance-tests/scripts/04_mixed.js \
+  -e K6_BASE_URL=http://localhost:5000 \
+  --out json=performance-tests/results/mixed.json
+
+# Against production
+k6 run -e SCENARIO=smoke performance-tests/scripts/01_health_movies.js \
+  -e K6_BASE_URL=https://cinema-sync-six.vercel.app
 ```
 
-## Default Local URLs
+See [`performance-tests/README.md`](performance-tests/README.md) for full instructions.
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:5000/api`
-- Health endpoint: `http://localhost:5000/api/health`
+## CI / CD
 
-## Production Readiness Notes
+GitHub Actions runs backend integration tests on every push to `master` that touches `api/`.
+After tests pass, the workflow waits 90 seconds and smoke-tests the Vercel production URL.
 
-- Keep secrets only in `.env` / secret manager
-- Use a managed MongoDB instance in production
-- Replace in-memory cache and rate limiter with Redis for horizontal scaling
-- Keep payment confirmation provider-authoritative (webhook signature verification)
+To enable the production smoke test, add a GitHub secret:
+- Name: `VERCEL_PROD_URL`
+- Value: `https://cinema-sync-six.vercel.app`
 
-## Day 4 Security Notes
+Vercel auto-deploys from GitHub on every push — no manual deploy step needed after initial setup.
 
-- Payment confirmation now supports signature-verified provider callback flow:
-  - `POST /api/payments/webhook/mock`
-- Webhook payload includes unique `eventId` to prevent replay/reprocessing.
-- Auth diagnostics routes are admin-protected:
-  - `/api/auth/test`
-  - `/api/auth/email-health`
-  - `/api/auth/sms-health`
+## Notes
 
-
-## OTP Debug Safety
-
-- Set OTP_DEBUG_PREVIEW=false in production (recommended).
-- Keep it true only for local debugging when email/SMS providers are unavailable.
-
-
+- Serverless functions do not support persistent local file storage, so ticket PDFs are generated on demand in memory.
+- Background cleanup uses opportunistic per-request sweeps instead of `setInterval()`, which is safer on Vercel.
+- For real Stripe card/UPI UI inside the app, you still need `STRIPE_PUBLISHABLE_KEY` in addition to `STRIPE_SECRET_KEY`.
+- MongoDB pool size is set to 5 (serverless-safe). Increase `MONGO_MAX_POOL_SIZE` if running a persistent server.

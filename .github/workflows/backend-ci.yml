@@ -1,19 +1,24 @@
 name: backend-ci
 
+# Triggers on any push/PR to master/main that touches api/ or this workflow file.
 on:
   push:
     branches: ["master", "main"]
     paths:
-      - "backend/**"
+      - "api/**"
       - ".github/workflows/backend-ci.yml"
   pull_request:
     branches: ["master", "main"]
     paths:
-      - "backend/**"
+      - "api/**"
       - ".github/workflows/backend-ci.yml"
 
 jobs:
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 1: Integration tests (runs on every push + PR)
+  # ──────────────────────────────────────────────────────────────────────────
   test-backend:
+    name: API Integration Tests
     runs-on: ubuntu-latest
 
     services:
@@ -21,32 +26,100 @@ jobs:
         image: mongo:7
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd "mongosh --eval 'db.runCommand({ping:1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     defaults:
       run:
-        working-directory: backend
+        working-directory: api
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: backend/package-lock.json
+          cache-dependency-path: api/package-lock.json
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
+      - name: Run integration tests
         env:
+          NODE_ENV: test
           MONGO_URI_TEST: mongodb://127.0.0.1:27017/cinemasync_test
-          JWT_ACCESS_SECRET: ci_access_secret
-          JWT_REFRESH_SECRET: ci_refresh_secret
+          JWT_SECRET: ci_jwt_secret_not_for_production
+          JWT_ACCESS_SECRET: ci_access_secret_not_for_production
+          JWT_REFRESH_SECRET: ci_refresh_secret_not_for_production
           JWT_ACCESS_EXPIRY: 15m
           JWT_REFRESH_EXPIRY: 7d
+          TICKET_QR_SECRET: ci_qr_secret_not_for_production
           PAYMENT_PROVIDER: mock
           SEAT_LOCK_MINUTES: 10
+          PAYMENT_WINDOW_MINUTES: 10
+          EMAIL_FALLBACK_TO_LOG: "true"
+          SMS_FALLBACK_TO_LOG: "true"
+          TMDB_API_KEY: ""
+          MOVIE_PROVIDER: database
         run: npm test
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Job 2: Production smoke test after Vercel auto-deploy
+  # Only runs on push to master (not PRs). Tests pass first.
+  # Requires secret: VERCEL_PROD_URL = https://cinema-sync-six.vercel.app
+  # Set in: GitHub repo -> Settings -> Secrets -> Actions -> New secret
+  # ──────────────────────────────────────────────────────────────────────────
+  smoke-prod:
+    name: Production Smoke Test
+    runs-on: ubuntu-latest
+    needs: test-backend
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Wait for Vercel auto-deploy (90s)
+        # Vercel deploys on every push to master automatically.
+        # Adjust sleep if your Vercel build takes longer than 90 seconds.
+        run: sleep 90
+
+      - name: Smoke test /api/health
+        env:
+          PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          if [ -z "$PROD_URL" ]; then
+            echo "VERCEL_PROD_URL secret not configured — skipping production smoke test."
+            echo "Add it at: GitHub repo -> Settings -> Secrets -> Actions"
+            exit 0
+          fi
+          echo "Target: $PROD_URL"
+          RESPONSE=$(curl -sf --max-time 20 "$PROD_URL/api/health" 2>&1 || echo "CURL_FAILED")
+          echo "Response: $RESPONSE"
+          if echo "$RESPONSE" | grep -q '"success":true'; then
+            echo "Health check PASSED."
+          else
+            echo "Health check FAILED. Check Vercel deployment logs and ensure MONGO_URI is set."
+            exit 1
+          fi
+
+      - name: Smoke test GET /api/movies
+        env:
+          PROD_URL: ${{ secrets.VERCEL_PROD_URL }}
+        run: |
+          if [ -z "$PROD_URL" ]; then exit 0; fi
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 20 "$PROD_URL/api/movies?limit=1")
+          echo "GET /api/movies -> HTTP $HTTP_STATUS"
+          if [ "$HTTP_STATUS" = "200" ]; then
+            echo "Movie listing PASSED."
+          elif [ "$HTTP_STATUS" = "500" ]; then
+            echo "FAILED with 500 — likely MONGO_URI not set in Vercel dashboard."
+            exit 1
+          else
+            echo "Unexpected status: $HTTP_STATUS"
+            exit 1
+          fi
