@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { GoogleLogin } from "@react-oauth/google";
 import FloatingInput from "../components/FloatingInput";
 import CinemaBrandPanel from "../components/CinemaBrandPanel";
 import useAuth from "../hooks/useAuth";
@@ -18,7 +19,6 @@ const RegisterPage = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const googleButtonRef = useRef(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const handleChange = (field) => (event) => {
@@ -95,38 +95,6 @@ const RegisterPage = () => {
   );
 
   useEffect(() => {
-    if (!googleClientId || otpStage) return;
-
-    const initializeGoogle = () => {
-      if (!window.google || !googleButtonRef.current) return;
-      googleButtonRef.current.innerHTML = "";
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleSuccess,
-      });
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        theme: "outline",
-        size: "large",
-        text: "signup_with",
-        shape: "pill",
-        width: 360,
-      });
-    };
-
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) {
-      initializeGoogle();
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = initializeGoogle;
-    document.head.appendChild(script);
-  }, [googleClientId, handleGoogleSuccess, otpStage]);
-
-  useEffect(() => {
     const timer = setInterval(() => {
       if (otpExpiresAt) {
         setOtpSeconds(Math.max(0, Math.floor((new Date(otpExpiresAt).getTime() - Date.now()) / 1000)));
@@ -168,7 +136,17 @@ const RegisterPage = () => {
                     <div className="mb-6 space-y-4">
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-white/45">Sign Up With Google</p>
-                        <div ref={googleButtonRef} className="flex justify-center" />
+                        <div className="flex justify-center">
+                          <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={() => setError("Google sign-up failed. Try email instead.")}
+                            theme="filled_black"
+                            shape="pill"
+                            text="signup_with"
+                            size="large"
+                            width="340"
+                          />
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="h-px flex-1 bg-white/10" />

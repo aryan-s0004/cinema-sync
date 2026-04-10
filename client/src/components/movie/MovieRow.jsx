@@ -7,10 +7,25 @@ const toneMap = {
   emerald: "border-emerald-400/30 bg-emerald-500/10 text-emerald-200",
 };
 
+const SkeletonCard = () => (
+  <div className="min-w-[248px] max-w-[248px] overflow-hidden rounded-[1.75rem] border border-slate-800/60 bg-slate-950/80 animate-pulse">
+    <div className="aspect-[2/3] bg-slate-800/60" />
+    <div className="p-4 space-y-3">
+      <div className="h-3 w-3/4 rounded-full bg-slate-700/60" />
+      <div className="h-2.5 w-1/2 rounded-full bg-slate-700/40" />
+      <div className="flex gap-2 pt-1">
+        <div className="h-2 w-12 rounded-full bg-slate-700/30" />
+        <div className="h-2 w-10 rounded-full bg-slate-700/30" />
+      </div>
+    </div>
+  </div>
+);
+
 const MovieRow = ({
   title,
   subtitle = "",
   movies = [],
+  loading = false,
   watchlistIds = [],
   onToggleWatchlist,
   tone = "cyan",
@@ -38,11 +53,15 @@ const MovieRow = ({
           className={`flex w-fit items-center gap-2 rounded-full border px-5 py-2 text-[9px] font-black uppercase tracking-[0.2em] shadow-xl ${toneClass}`}
         >
           <div className="h-1 w-1 rounded-full bg-current animate-pulse" />
-          {movies.length} Curated Titles
+          {loading ? "Loading..." : `${movies.length} Curated Titles`}
         </div>
       </div>
 
-      {!movies.length ? (
+      {loading ? (
+        <div className="flex gap-6 overflow-x-hidden px-2 pb-8">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+        </div>
+      ) : !movies.length ? (
         <div className="rounded-[2rem] border border-dashed border-white/5 bg-white/2 p-12 text-center">
           <p className="text-xs font-black uppercase italic tracking-widest text-white/20">{emptyText}</p>
         </div>

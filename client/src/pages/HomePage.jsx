@@ -172,7 +172,8 @@ const HomePage = () => {
         <MovieRow
           title="Trending Now"
           subtitle="Real-time occupancy leaders"
-          movies={loading && !isSearching ? [] : trendingMovies}
+          movies={trendingMovies}
+          loading={loading && !isSearching}
           watchlistIds={watchlistIds}
           onToggleWatchlist={toggleWatchlist}
           tone="amber"
@@ -182,7 +183,8 @@ const HomePage = () => {
         <MovieRow
           title="Top Rated"
           subtitle="Curated by the global community"
-          movies={loading && !isSearching ? [] : topRatedMovies}
+          movies={topRatedMovies}
+          loading={loading && !isSearching}
           watchlistIds={watchlistIds}
           onToggleWatchlist={toggleWatchlist}
           tone="cyan"
@@ -193,7 +195,8 @@ const HomePage = () => {
           <MovieRow
             title="Beyond Recommendations"
             subtitle={recLoading ? "Analyzing your taste profile..." : "Personalized for you"}
-            movies={recLoading ? [] : recommendedMovies}
+            movies={recommendedMovies}
+            loading={recLoading}
             watchlistIds={watchlistIds}
             onToggleWatchlist={toggleWatchlist}
             tone="emerald"

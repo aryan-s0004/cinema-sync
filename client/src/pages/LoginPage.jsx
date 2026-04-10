@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { GoogleLogin } from "@react-oauth/google";
 import FloatingInput from "../components/FloatingInput";
 import CinemaBrandPanel from "../components/CinemaBrandPanel";
 import useAuth from "../hooks/useAuth";
@@ -22,7 +23,6 @@ const LoginPage = () => {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const googleButtonRef = useRef(null);
   const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const redirectTo = location.state?.from || "/";
 
@@ -131,38 +131,6 @@ const LoginPage = () => {
   );
 
   useEffect(() => {
-    if (!googleClientId || forgotStep !== 0) return;
-
-    const initializeGoogle = () => {
-      if (!window.google || !googleButtonRef.current) return;
-      googleButtonRef.current.innerHTML = "";
-      window.google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleSuccess,
-      });
-      window.google.accounts.id.renderButton(googleButtonRef.current, {
-        theme: "outline",
-        size: "large",
-        text: "continue_with",
-        shape: "pill",
-        width: 360,
-      });
-    };
-
-    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
-    if (existing) {
-      initializeGoogle();
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.onload = initializeGoogle;
-    document.head.appendChild(script);
-  }, [forgotStep, googleClientId, handleGoogleSuccess]);
-
-  useEffect(() => {
     const timer = setInterval(() => {
       if (resetExpiresAt) {
         setResetSeconds(Math.max(0, Math.floor((new Date(resetExpiresAt).getTime() - Date.now()) / 1000)));
@@ -204,7 +172,17 @@ const LoginPage = () => {
                     <div className="mb-6 space-y-4">
                       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                         <p className="mb-3 text-xs font-bold uppercase tracking-[0.24em] text-white/45">Continue With Google</p>
-                        <div ref={googleButtonRef} className="flex justify-center" />
+                        <div className="flex justify-center">
+                          <GoogleLogin
+                            onSuccess={handleGoogleSuccess}
+                            onError={() => setError("Google sign-in failed. Try email instead.")}
+                            theme="filled_black"
+                            shape="pill"
+                            text="continue_with"
+                            size="large"
+                            width="340"
+                          />
+                        </div>
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="h-px flex-1 bg-white/10" />
