@@ -22,6 +22,8 @@ const movieSchema = new mongoose.Schema(
 
 movieSchema.index({ isActive: 1, popularity: -1, createdAt: -1 });
 movieSchema.index({ providerSource: 1, providerMovieId: 1 }, { sparse: true });
-movieSchema.index({ title: "text" });
+// language_override prevents MongoDB from using the `language` field as a
+// text-search language selector (which rejects values like "hi", "ta", etc.)
+movieSchema.index({ title: "text" }, { language_override: "_search_lang" });
 
 module.exports = mongoose.model("Movie", movieSchema);
