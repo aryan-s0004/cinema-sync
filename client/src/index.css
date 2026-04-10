@@ -1,0 +1,107 @@
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  font-family: "Outfit", "Segoe UI", sans-serif;
+  --cs-bg: #0b0b0f;
+  --cs-surface: #12131a;
+  --cs-surface-soft: #171923;
+  --cs-red: #e50914;
+  --cs-purple: #9333ea;
+  --cs-text: #f5f7fb;
+}
+
+body {
+  @apply min-h-screen antialiased;
+  color: var(--cs-text);
+  background-color: var(--cs-bg);
+  background-image:
+    radial-gradient(circle at 14% 16%, rgba(229, 9, 20, 0.16), transparent 32%),
+    radial-gradient(circle at 84% 8%, rgba(147, 51, 234, 0.22), transparent 30%),
+    linear-gradient(180deg, #0b0b0f 0%, #12131a 48%, #0b0b0f 100%);
+}
+
+h1,
+h2,
+h3 {
+  font-family: "Space Grotesk", "Outfit", sans-serif;
+}
+
+#root {
+  @apply min-h-screen;
+}
+
+.card-surface {
+  @apply rounded-2xl border border-white/10 backdrop-blur;
+  background: rgba(18, 19, 26, 0.84);
+}
+
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes heroShimmer {
+  0% {
+    transform: translateX(-3%);
+  }
+  50% {
+    transform: translateX(3%);
+  }
+  100% {
+    transform: translateX(-3%);
+  }
+}
+
+.reveal-up {
+  opacity: 0;
+  animation: revealUp 0.56s ease forwards;
+}
+
+.reveal-delay-1 {
+  animation-delay: 0.1s;
+}
+
+.reveal-delay-2 {
+  animation-delay: 0.2s;
+}
+
+.hero-shimmer {
+  animation: heroShimmer 14s ease-in-out infinite;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+.perspective-1000 {
+  perspective: 1000px;
+}
+
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+}
