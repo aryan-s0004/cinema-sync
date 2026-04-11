@@ -273,6 +273,14 @@ Add `VERCEL_PROD_URL` to GitHub repo secrets to enable the smoke test.
 
 ---
 
-## Project Report
+## Documentation
 
-See [report_progress.txt](report_progress.txt) for detailed feature completion percentages, strength/weakness analysis, and deployment readiness status.
+| Document | Description |
+|----------|-------------|
+| [docs/architecture.md](docs/architecture.md) | System design, data model, request lifecycle |
+| [docs/api-docs.md](docs/api-docs.md) | Full API reference with request/response examples |
+| [docs/setup-guide.md](docs/setup-guide.md) | Local development setup, env vars, seeding |
+| [docs/deployment.md](docs/deployment.md) | Vercel deployment, CI/CD, Stripe webhooks |
+| [docs/progress-report.md](docs/progress-report.md) | Feature completion, strengths, weak areas |
+| [docs/performance-report.md](docs/performance-report.md) | k6 results, bottleneck analysis, recommendations |
+| [archive/REPORT_CINEMASYNC_FINAL.md](archive/REPORT_CINEMASYNC_FINAL.md) | Final audit report + ATS resume bullets |
