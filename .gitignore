@@ -13,6 +13,8 @@ client/node_modules/
 .idea/
 *.txt
 !README.md
+!report_progress.txt
+!Progress_Final.txt
 !api/docs/**
 abcd.txt
 api_info.txt
@@ -20,7 +22,6 @@ api_key_change_watchmode
 changes.txt
 progress_*.txt
 Progress_Day_*.txt
-!Progress_Final.txt
 checkout.css
 checkout.html
 checkout.js
@@ -30,3 +31,5 @@ complete.js
 
 .vercel
 performance-tests/results/*.json
+
+.vercel
