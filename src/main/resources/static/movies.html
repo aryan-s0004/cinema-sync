@@ -1,0 +1,22 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Movies | CinemaSync</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/movies.js" defer></script>
+</head>
+<body>
+  <main class="shell">
+    <header class="page-header">
+      <div>
+        <h1>Movies</h1>
+        <p>Choose a film and lock sample seats A1 and A2.</p>
+      </div>
+      <button type="button" onclick="loadMovies()">Refresh</button>
+    </header>
+    <section id="movies" class="movie-grid" aria-live="polite"></section>
+  </main>
+</body>
+</html>

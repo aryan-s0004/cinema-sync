@@ -1,0 +1,25 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register | CinemaSync</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/auth.js" defer></script>
+</head>
+<body>
+  <main class="shell form-shell">
+    <h1>Register</h1>
+    <form onsubmit="register(); return false;">
+      <label for="name">Name</label>
+      <input id="name" type="text" autocomplete="name" required>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" required>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="new-password" minlength="8" required>
+      <button type="submit">Register</button>
+    </form>
+    <a href="login.html">Already have an account?</a>
+  </main>
+</body>
+</html>
